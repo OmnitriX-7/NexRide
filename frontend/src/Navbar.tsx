@@ -130,7 +130,7 @@ const Navbar = () => {
                 </div>
 
                 <div style={listStyle}>
-                  <MenuButton icon={<Trophy size={18}/>} label="Leaderboard" />
+                  <MenuButton icon={<Trophy size={18}/>} label="Leaderboard" onClick={() => { navigate('/leaderboard'); setIsOpen(false); }} />
                   <MenuButton icon={<CreditCard size={18}/>} label="Payments" />
 
                   <div style={toggleItemStyle}>

@@ -14,6 +14,7 @@ const Home = () => {
 
   useEffect(() => {
     if (profile) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsDriverMode(profile.role === 'driver');
     }
   }, [profile]);

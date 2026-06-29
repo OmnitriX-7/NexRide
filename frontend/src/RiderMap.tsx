@@ -117,6 +117,7 @@ export default function RiderMap({
       };
       fetchRoute();
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRoutePoints([]);
     }
   }, [userLocation, destinationLocation]);

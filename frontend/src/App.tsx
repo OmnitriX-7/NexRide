@@ -10,6 +10,7 @@ import LoadingScreen from './LoadingScreen';
 import NotificationToast from './NotificationToast';
 import ProfileDashboard from './ProfileDashboard';
 import Navbar from './Navbar';
+import Leaderboard from './Leaderboard';
 
 function App() {
   const { setProfile, hasProfile, setHasProfile } = useUserStore();
@@ -66,12 +67,8 @@ function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
       if (event === 'SIGNED_IN' && currentSession) {
-        setIsInitialLoading(true);
-        const minLoadingTime = new Promise(resolve => setTimeout(resolve, 2000));
-        setSession(currentSession);
         await fetchAndSyncProfile(currentSession.user.id);
-        await minLoadingTime;
-        setIsInitialLoading(false);
+        setSession(currentSession);
       } else if (event === 'SIGNED_OUT') {
         setProfile(null);
         setHasProfile(false);
@@ -132,6 +129,24 @@ function App() {
                   <Navbar />
                 </div>
                 <ProfileDashboard />
+              </motion.div>
+            ) : (
+              <Navigate to={session ? "/onboarding" : "/"} replace />
+            )
+          } />
+
+          <Route path="/leaderboard" element={
+            session && hasProfile ? (
+              <motion.div 
+                key="leaderboard-content" 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                style={{ width: '100%', height: '100%', overflow: 'hidden' }}
+              >
+                <div style={{ position: 'sticky', top: 0, zIndex: 1000 }}>
+                  <Navbar />
+                </div>
+                <Leaderboard />
               </motion.div>
             ) : (
               <Navigate to={session ? "/onboarding" : "/"} replace />

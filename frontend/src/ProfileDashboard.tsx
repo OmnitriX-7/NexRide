@@ -80,6 +80,7 @@ const ProfileDashboard = () => {
     };
 
     fetchFullProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id]);
 
   const fetchDriverDetails = async () => {

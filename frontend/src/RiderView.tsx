@@ -314,6 +314,7 @@ const RiderView = () => {
       .subscribe();
 
     return () => { supabase.removeChannel(dispatchSubscription); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDispatchId, showToast]);
 
   // --- LIVE GPS TRACKING ---
@@ -352,7 +353,7 @@ const RiderView = () => {
   // --- UTILS ---
   const sortedDrivers = useMemo(() => {
     return [...availableDrivers].sort((a, b) => {
-      let modifier = sortOrder === 'asc' ? 1 : -1;
+      const modifier = sortOrder === 'asc' ? 1 : -1;
       if (a[sortBy] < b[sortBy]) return -1 * modifier;
       if (a[sortBy] > b[sortBy]) return 1 * modifier;
       return 0;

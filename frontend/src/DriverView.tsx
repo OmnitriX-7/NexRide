@@ -65,10 +65,10 @@ const DriverView = () => {
 
   // --- 3. GPS HEARTBEAT ---
   useEffect(() => {
-    let heartbeatId: any;
-    const pingLocation = () => {
-      if (!navigator.geolocation) return;
-      navigator.geolocation.getCurrentPosition(
+    let watchId: number;
+    
+    if ((isOnline || activeRide) && driverId && navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition(
         async (pos) => {
           const { latitude, longitude } = pos.coords;
           setCurrentLocation({ lat: latitude, lng: longitude });
@@ -77,15 +77,13 @@ const DriverView = () => {
           }
         },
         (err) => console.warn(err.message),
-        { enableHighAccuracy: true, timeout: 10000 }
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 }
       );
-    };
-
-    if ((isOnline || activeRide) && driverId) {
-      pingLocation();
-      heartbeatId = setInterval(pingLocation, 10000);
     }
-    return () => clearInterval(heartbeatId);
+
+    return () => {
+      if (watchId !== undefined) navigator.geolocation.clearWatch(watchId);
+    };
   }, [isOnline, activeRide, driverId]);
 
   // --- 4. TOGGLE ONLINE STATUS ---

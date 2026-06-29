@@ -227,3 +227,74 @@ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.coupons;
   EXCEPTION WHEN others THEN NULL; END;
 END $$;
+
+-- ==========================================
+-- 7. LEADERBOARDS & MATERIALIZED VIEWS
+-- ==========================================
+
+-- Helper function for distance calculation
+CREATE OR REPLACE FUNCTION public.calculate_distance_km(lat1 double precision, lon1 double precision, lat2 double precision, lon2 double precision)
+RETURNS double precision LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+    RETURN 6371 * acos(
+        cos(radians(lat1)) * cos(radians(lat2)) * cos(radians(lon2) - radians(lon1)) + 
+        sin(radians(lat1)) * sin(radians(lat2))
+    );
+EXCEPTION WHEN OTHERS THEN
+    RETURN 0;
+END;
+$$;
+
+-- Driver Leaderboard Materialized View
+DROP MATERIALIZED VIEW IF EXISTS public.driver_leaderboard;
+CREATE MATERIALIZED VIEW public.driver_leaderboard AS
+SELECT 
+    p.id,
+    p.full_name,
+    p.avatar_url,
+    d.rating,
+    COUNT(r.id) AS total_rides,
+    COALESCE(SUM(r.fare_amount), 0) AS total_earned,
+    COALESCE(SUM(public.calculate_distance_km(r.pickup_lat, r.pickup_lng, r.dest_lat, r.dest_lng)), 0) AS total_distance
+FROM public.profiles p
+JOIN public.drivers d ON p.id = d.id
+LEFT JOIN public.ride_dispatches r ON d.id = r.driver_id AND r.status = 'completed'
+GROUP BY p.id, p.full_name, p.avatar_url, d.rating;
+
+-- Rider Leaderboard Materialized View
+DROP MATERIALIZED VIEW IF EXISTS public.rider_leaderboard;
+CREATE MATERIALIZED VIEW public.rider_leaderboard AS
+SELECT 
+    p.id,
+    p.full_name,
+    p.avatar_url,
+    COUNT(r.id) AS total_rides,
+    COALESCE(SUM(r.fare_amount), 0) AS total_spent,
+    COALESCE(SUM(public.calculate_distance_km(r.pickup_lat, r.pickup_lng, r.dest_lat, r.dest_lng)), 0) AS total_distance
+FROM public.profiles p
+JOIN public.ride_dispatches r ON p.id = r.rider_id AND r.status = 'completed'
+GROUP BY p.id, p.full_name, p.avatar_url;
+
+-- Refresh function
+CREATE OR REPLACE FUNCTION public.refresh_leaderboards()
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+    REFRESH MATERIALIZED VIEW public.driver_leaderboard;
+    REFRESH MATERIALIZED VIEW public.rider_leaderboard;
+END;
+$$;
+
+-- RLS for materialized views (Views don't have RLS by default, but we can revoke public access and grant to authenticated)
+REVOKE ALL ON public.driver_leaderboard FROM PUBLIC;
+REVOKE ALL ON public.rider_leaderboard FROM PUBLIC;
+GRANT SELECT ON public.driver_leaderboard TO authenticated;
+GRANT SELECT ON public.rider_leaderboard TO authenticated;
+
+-- Setup pg_cron to refresh every 24 hours at midnight
+-- Note: Requires pg_cron extension enabled in Supabase Dashboard
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    PERFORM cron.schedule('refresh_leaderboards_daily', '0 0 * * *', 'SELECT public.refresh_leaderboards();');
+  END IF;
+EXCEPTION WHEN OTHERS THEN NULL; END $$;
