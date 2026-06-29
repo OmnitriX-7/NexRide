@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { CreditCard, Wallet, Receipt, Plus, ArrowUpRight, ArrowDownLeft, Clock, MapPin, IndianRupee } from 'lucide-react';
+import { CreditCard, Wallet, Receipt, Plus, ArrowUpRight, ArrowDownLeft, Clock, IndianRupee } from 'lucide-react';
 import { useUserStore } from './store';
 import { supabase } from './supabaseClient';
 import './PaymentsDashboard.css';
@@ -14,7 +14,7 @@ const PaymentsDashboard = () => {
   useEffect(() => {
     const fetchHistory = async () => {
       if (!profile?.id) return;
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('ride_dispatches')
         .select('*')
         .or(`rider_id.eq.${profile.id},driver_id.eq.${profile.id}`)

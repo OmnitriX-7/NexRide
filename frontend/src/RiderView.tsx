@@ -18,7 +18,7 @@ const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon
 
 const RiderView = () => {
   const showToast = useUserStore((state) => state.showToast);
-  const profile = useUserStore((state) => state.profile);
+
   const setProfile = useUserStore((state) => state.setProfile);
 
   // Payment State
