@@ -4,6 +4,7 @@ import { Circle, MapPin, Search, Star, CarFront, ArrowUpDown, X, CheckCircle2, I
 import { supabase } from './supabaseClient';
 import { useUserStore } from './store';
 import RiderMap from './RiderMap';
+import { PaymentGateway } from './PaymentGateway';
 import './RiderView.css'; 
 
 const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -16,7 +17,14 @@ const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon
 };
 
 const RiderView = () => {
-  const { showToast, setProfile } = useUserStore();
+  const showToast = useUserStore((state) => state.showToast);
+  const profile = useUserStore((state) => state.profile);
+  const setProfile = useUserStore((state) => state.setProfile);
+
+  // Payment State
+  const [showPaymentGateway, setShowPaymentGateway] = useState(false);
+  const [clientSecret, setClientSecret] = useState('');
+  const [paymentPaid, setPaymentPaid] = useState(false);
 
   // --- CORE STATES ---
   const [isRestoring, setIsRestoring] = useState(true); // NEW: Prevents UI flicker on refresh
@@ -90,6 +98,7 @@ const RiderView = () => {
         setDestLat(data.dest_lat);
         setDestLng(data.dest_lng);
         setFinalFare(data.fare_amount);
+        setPaymentPaid(data.payment_status === 'paid');
 
         // Bookmark the ID in local storage
         localStorage.setItem('active_ride_id', data.id);
@@ -283,31 +292,39 @@ const RiderView = () => {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'ride_dispatches', filter: `id=eq.${currentDispatchId}` },
         (payload) => {
-          const newStatus = payload.new.status;
-          
-          if (newStatus === 'accepted') {
-            setStep(4);
-            showToast("Driver accepted your ride!");
-          } else if (newStatus === 'rejected') {
-            showToast("Driver declined. Try another.");
-            setStep(2);
-            setCurrentDispatchId(null);
-            localStorage.removeItem('active_ride_id');
-          } else if (newStatus === 'completed') {
-            setStep(5);
-            localStorage.removeItem('active_ride_id'); // Ride is over, wipe memory
+          if (payload.new) {
+            const newStatus = payload.new.status;
+            const paymentStatus = payload.new.payment_status;
 
-            // Re-fetch profile to sync XP and Level updates from the database
-            supabase.auth.getUser().then(({ data: { user } }) => {
-              if (user) {
-                supabase.from('profiles').select('*').eq('id', user.id).single()
-                  .then(({ data: pData }) => { if (pData) setProfile(pData); });
-              }
-            });
-          } else if (newStatus === 'cancelled' || newStatus === 'timeout') {
-            setStep(1);
-            setCurrentDispatchId(null);
-            localStorage.removeItem('active_ride_id');
+            if (paymentStatus === 'paid') {
+              setPaymentPaid(true);
+              setShowPaymentGateway(false);
+            }
+
+            if (newStatus === 'accepted') {
+              setStep(4);
+              showToast("Driver accepted your ride!");
+            } else if (newStatus === 'rejected') {
+              showToast("Driver declined. Try another.");
+              setStep(2);
+              setCurrentDispatchId(null);
+              localStorage.removeItem('active_ride_id');
+            } else if (newStatus === 'completed') {
+              setStep(5);
+              localStorage.removeItem('active_ride_id'); // Ride is over, wipe memory
+
+              // Re-fetch profile to sync XP and Level updates from the database
+              supabase.auth.getUser().then(({ data: { user } }) => {
+                if (user) {
+                  supabase.from('profiles').select('*').eq('id', user.id).single()
+                    .then(({ data: pData }) => { if (pData) setProfile(pData); });
+                }
+              });
+            } else if (newStatus === 'cancelled' || newStatus === 'timeout') {
+              setStep(1);
+              setCurrentDispatchId(null);
+              localStorage.removeItem('active_ride_id');
+            }
           }
         }
       )
@@ -348,6 +365,31 @@ const RiderView = () => {
     setCurrentDispatchId(null);
     setLiveDriverCoords(null);
     setFinalFare(null);
+    setPaymentPaid(false);
+  };
+
+  const handlePayNow = async () => {
+    if (!finalFare || !currentDispatchId) return;
+    try {
+      const res = await fetch('http://localhost:4242/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: finalFare })
+      });
+      const data = await res.json();
+      if (data.clientSecret) {
+        setClientSecret(data.clientSecret);
+        setShowPaymentGateway(true);
+      }
+    } catch (err) {
+      showToast("Error connecting to payment server");
+    }
+  };
+
+  const handlePaymentSuccess = () => {
+    setPaymentPaid(true);
+    setShowPaymentGateway(false);
+    showToast("Payment Successful!");
   };
 
   // --- UTILS ---
@@ -395,7 +437,7 @@ const RiderView = () => {
               <motion.div key="search" initial={{ y: '10%' }} animate={{ y: 0 }} exit={{ y: '10%' }} className="panel-card search-panel">
                 <div className="panel-header">
                   <h2>Where to?</h2>
-                  <p>Select your location for Shyft</p>
+                  <p>Select your location for NexRide</p>
                 </div>
                 <div className="form-group">
                   <div className="input-wrapper">
@@ -517,6 +559,16 @@ const RiderView = () => {
                 </motion.div>
                 <h2>Ride in Progress</h2>
                 <p><b>{selectedDriver?.name}</b> is heading to <b>{destination}</b>.</p>
+                
+                {!paymentPaid ? (
+                  <button onClick={handlePayNow} className="primary-btn" style={{ marginTop: '16px', backgroundColor: '#2563eb' }}>
+                    Pay Now (₹{finalFare})
+                  </button>
+                ) : (
+                  <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#dcfce7', color: '#166534', borderRadius: '12px', fontWeight: 'bold' }}>
+                    Payment Completed ✓
+                  </div>
+                )}
               </motion.div>
             )}
 
@@ -581,6 +633,16 @@ const RiderView = () => {
         />
         <div className="map-gradient-overlay" />
       </div>
+
+      {showPaymentGateway && clientSecret && (
+        <PaymentGateway 
+          clientSecret={clientSecret}
+          amount={finalFare!}
+          rideId={currentDispatchId!}
+          onSuccess={handlePaymentSuccess}
+          onCancel={() => setShowPaymentGateway(false)}
+        />
+      )}
     </div>
   );
 };

@@ -11,6 +11,7 @@ import NotificationToast from './NotificationToast';
 import ProfileDashboard from './ProfileDashboard';
 import Navbar from './Navbar';
 import Leaderboard from './Leaderboard';
+import PaymentsDashboard from './PaymentsDashboard';
 
 function App() {
   const { setProfile, hasProfile, setHasProfile } = useUserStore();
@@ -151,6 +152,16 @@ function App() {
             ) : (
               <Navigate to={session ? "/onboarding" : "/"} replace />
             )
+          } />
+
+          <Route path="/payments" element={
+            !session ? <Navigate to="/" replace /> :
+            (!hasProfile ? <Navigate to="/onboarding" replace /> : (
+              <>
+                <Navbar />
+                <PaymentsDashboard />
+              </>
+            ))
           } />
 
           <Route path="*" element={

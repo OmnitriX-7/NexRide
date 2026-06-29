@@ -9,17 +9,21 @@
 
     <meta http-equiv="Content-Security-Policy" content="
       default-src 'self'; 
-      script-src 'self' 'unsafe-inline' 'unsafe-eval'; 
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; 
       style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; 
       font-src 'self' https://fonts.gstatic.com;
       img-src 'self' data: https: blob:; 
+      frame-src 'self' https://js.stripe.com https://hooks.stripe.com;
       connect-src 'self' 
         https://*.supabase.co 
         wss://*.supabase.co 
         http://localhost:5000 
         http://127.0.0.1:5000 
+        http://localhost:4242
+        http://127.0.0.1:4242
         https://photon.komoot.io 
-        https://router.project-osrm.org;
+        https://router.project-osrm.org
+        https://api.stripe.com;
     ">
 
     <title>Ride Share</title>

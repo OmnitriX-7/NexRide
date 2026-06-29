@@ -34,8 +34,8 @@ const Navbar = () => {
 
       const referralLink = `${window.location.origin}/?ref=${userId}`;
       const shareData = {
-        title: 'Join Shyft',
-        text: 'Use my link to join Shyft and we both get ride discounts!',
+        title: 'Join NexRide',
+        text: 'Use my link to join NexRide and we both get ride discounts!',
         url: referralLink,
       };
 
@@ -80,7 +80,7 @@ const Navbar = () => {
       >
         <div style={logoIconStyle}><Car size={24} strokeWidth={2.5} /></div>
         <span style={{ fontWeight: '800', fontSize: '22px', color: '#2563eb' }}>
-          Shyft
+          NexRide
         </span>
       </div>
 
@@ -123,7 +123,7 @@ const Navbar = () => {
                        {profile?.full_name || 'User'} 
                      </div>
                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                       {profile?.role === 'driver' ? 'Verified Driver' : 'Shyft Rider'}
+                       {profile?.role === 'driver' ? 'Verified Driver' : 'NexRide Rider'}
                      </div>
                    </div>
                    <ChevronRight size={16} color="#cbd5e1" />
@@ -131,7 +131,7 @@ const Navbar = () => {
 
                 <div style={listStyle}>
                   <MenuButton icon={<Trophy size={18}/>} label="Leaderboard" onClick={() => { navigate('/leaderboard'); setIsOpen(false); }} />
-                  <MenuButton icon={<CreditCard size={18}/>} label="Payments" />
+                  <MenuButton icon={<CreditCard size={18}/>} label="Payments" onClick={() => navigate('/payments')} />
 
                   <div style={toggleItemStyle}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -143,7 +143,7 @@ const Navbar = () => {
                     </button>
                   </div>
 
-                  <MenuButton icon={<Crown size={18} color="#eab308"/>} label="Shyft Gold" />
+                  <MenuButton icon={<Crown size={18} color="#eab308"/>} label="NexRide Gold" />
                   
                   <MenuButton 
                     icon={<Users size={18} color="#2563eb"/>} 

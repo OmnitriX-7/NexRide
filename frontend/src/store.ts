@@ -15,6 +15,7 @@ export interface UserProfile {
   created_at?: string;
   exp?: number;
   level?: number;
+  wallet_balance?: number;
 }
 
 interface UserState {

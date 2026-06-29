@@ -122,8 +122,20 @@ const DriverView = () => {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'ride_dispatches' },
         (payload) => {
-          if (payload.new.driver_id === driverId && ['cancelled', 'timeout'].includes(payload.new.status)) {
-            setIncomingRequests((prev) => prev.filter(req => req.id !== payload.new.id));
+          if (payload.new.driver_id === driverId) {
+            if (['cancelled', 'timeout'].includes(payload.new.status)) {
+              setIncomingRequests((prev) => prev.filter(req => req.id !== payload.new.id));
+              setActiveRide((prev: any) => prev?.id === payload.new.id ? null : prev);
+            }
+            if (payload.new.payment_status === 'paid') {
+              setActiveRide((prev: any) => {
+                if (prev?.id === payload.new.id && prev.payment_status !== 'paid') {
+                  showToast("Rider has paid!");
+                  return { ...prev, payment_status: 'paid' };
+                }
+                return prev;
+              });
+            }
           }
         }
       )
@@ -161,6 +173,11 @@ const DriverView = () => {
         showToast("You are too far from the destination to complete the ride.");
         return;
       }
+    }
+
+    if (activeRide.payment_status !== 'paid') {
+      showToast("Cannot complete: Waiting for rider to pay.");
+      return;
     }
 
     // 1. Update Trip Status
@@ -259,12 +276,24 @@ const DriverView = () => {
               <div style={{ padding: '10px', backgroundColor: 'rgba(34, 197, 94, 0.1)', borderRadius: '12px' }}>
                 <Navigation size={24} color="#22c55e" />
               </div>
-              <div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <h4 style={{ margin: 0 }}>On Trip • ₹{activeRide.fare_amount}</h4>
                 <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)' }}>Destination: {activeRide.dropoff_name}</p>
+                {activeRide.payment_status === 'paid' ? (
+                  <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: 'bold' }}>Payment Received</span>
+                ) : (
+                  <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 'bold' }}>Waiting for Payment...</span>
+                )}
               </div>
             </div>
-            <button onClick={finishRide} className="primary-btn" style={{ backgroundColor: '#22c55e' }}>Complete Ride</button>
+            <button 
+              onClick={finishRide} 
+              className="primary-btn" 
+              style={{ backgroundColor: activeRide.payment_status === 'paid' ? '#22c55e' : '#cbd5e1' }}
+              disabled={activeRide.payment_status !== 'paid'}
+            >
+              Complete Ride
+            </button>
           </motion.div>
         )}
 

@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   exp int4 DEFAULT 0,
   level int4 DEFAULT 1,
   referred_by uuid REFERENCES auth.users(id),
+  wallet_balance DECIMAL(10,2) DEFAULT 0.00,
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -56,6 +57,8 @@ CREATE TABLE IF NOT EXISTS public.ride_dispatches (
   dest_lng DOUBLE PRECISION,
   fare_amount DECIMAL(10,2) NOT NULL,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'timeout', 'cancelled', 'completed')),
+  payment_status TEXT DEFAULT 'pending' CHECK (payment_status IN ('pending', 'paid')),
+  payment_method TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );

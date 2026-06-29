@@ -219,7 +219,7 @@ const ProfileDashboard = () => {
             </div>
             
             <div className="header-info">
-              <h2>{profile?.full_name || 'Shyft User'}</h2>
+              <h2>{profile?.full_name || 'NexRide User'}</h2>
               <span className={`role-badge ${profile?.role}`}>
                 {profile?.role === 'driver' ? <Car size={14} /> : <UserCircle size={14} />}
                 {profile?.role?.toUpperCase()}
