@@ -3,7 +3,7 @@ import {
   User, Phone, Mail, MapPin, Calendar, 
   Briefcase, Camera, Save, X, Edit3, 
   UserCircle, Car, Star, ArrowLeft, Trophy,
-  Clock, Award
+  Clock, Award, Crown
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from './supabaseClient';
@@ -206,13 +206,18 @@ const ProfileDashboard = () => {
         {/* Header Section */}
         <div className="profile-header">
           <div className="header-main">
-            <div className="avatar-wrapper">
+            <div className="avatar-wrapper" style={{ border: profile?.is_premium ? '4px solid #fbbf24' : 'none', position: 'relative' }}>
               {profile?.avatar_url ? (
                 <img src={profile.avatar_url} alt="Profile" className="avatar-img" />
               ) : (
-                <div className="avatar-placeholder"><User size={60} /></div>
+                <div className="avatar-placeholder"><UserCircle size={60} /></div>
               )}
-              <button className="avatar-edit-btn" onClick={() => fileInputRef.current?.click()}>
+              {profile?.is_premium && (
+                <div style={{ position: 'absolute', top: '-12px', right: '-12px', background: '#fbbf24', borderRadius: '50%', padding: '4px', zIndex: 10 }}>
+                  <Crown size={24} color="#000" />
+                </div>
+              )}
+              <button className="avatar-edit-btn" onClick={() => fileInputRef.current?.click()} style={{ zIndex: 11 }}>
                 {uploading ? "..." : <Camera size={18} />}
               </button>
               <input type="file" ref={fileInputRef} onChange={handleAvatarUpload} hidden accept="image/*" />

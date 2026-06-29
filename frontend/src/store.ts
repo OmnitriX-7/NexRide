@@ -16,6 +16,8 @@ export interface UserProfile {
   exp?: number;
   level?: number;
   wallet_balance?: number;
+  is_premium?: boolean;
+  premium_expires_at?: string | null;
 }
 
 interface UserState {

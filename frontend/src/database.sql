@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   level int4 DEFAULT 1,
   referred_by uuid REFERENCES auth.users(id),
   wallet_balance DECIMAL(10,2) DEFAULT 0.00,
+  is_premium BOOLEAN DEFAULT false,
+  premium_expires_at timestamp with time zone,
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -189,8 +191,15 @@ $$;
 
 -- Auto-create profile on auth signup
 CREATE OR REPLACE FUNCTION public.handle_new_user() RETURNS trigger AS $$
+DECLARE
+  ref_id UUID := NULL;
 BEGIN
-  INSERT INTO public.profiles (id, email) VALUES (new.id, new.email);
+  BEGIN
+    ref_id := (new.raw_user_meta_data->>'referred_by')::uuid;
+  EXCEPTION WHEN OTHERS THEN
+    ref_id := NULL;
+  END;
+  INSERT INTO public.profiles (id, email, referred_by) VALUES (new.id, new.email, ref_id);
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -200,10 +209,22 @@ CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXEC
 
 -- Ride completion XP award
 CREATE OR REPLACE FUNCTION public.on_ride_completed_award_xp() RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    ride_count INT;
+    referrer UUID;
 BEGIN
     IF (NEW.status = 'completed' AND (OLD.status IS DISTINCT FROM 'completed')) THEN
         PERFORM public.handle_xp_gain(NEW.rider_id, 20);
         PERFORM public.handle_xp_gain(NEW.driver_id, 20);
+        
+        -- Referral logic: If this is the rider's first completed ride, reward their referrer
+        SELECT COUNT(*) INTO ride_count FROM public.ride_dispatches WHERE rider_id = NEW.rider_id AND status = 'completed';
+        IF ride_count = 1 THEN
+            SELECT referred_by INTO referrer FROM public.profiles WHERE id = NEW.rider_id;
+            IF referrer IS NOT NULL THEN
+                UPDATE public.profiles SET wallet_balance = COALESCE(wallet_balance, 0) + 100.00 WHERE id = referrer;
+            END IF;
+        END IF;
     END IF;
     RETURN NEW;
 END;

@@ -18,12 +18,15 @@ const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon
 
 const RiderView = () => {
   const showToast = useUserStore((state) => state.showToast);
+  const profile = useUserStore((state) => state.profile);
 
   const setProfile = useUserStore((state) => state.setProfile);
 
   // Payment State
   const [showPaymentGateway, setShowPaymentGateway] = useState(false);
   const [clientSecret, setClientSecret] = useState('');
+  const [walletUsed, setWalletUsed] = useState(0);
+  const [stripeAmount, setStripeAmount] = useState(0);
   const [paymentPaid, setPaymentPaid] = useState(false);
 
   // --- CORE STATES ---
@@ -370,11 +373,33 @@ const RiderView = () => {
 
   const handlePayNow = async () => {
     if (!finalFare || !currentDispatchId) return;
+    
+    let discountedFare = finalFare;
+    if (profile?.is_premium) discountedFare = finalFare * 0.9;
+    
+    let wUsed = 0;
+    let sAmount = discountedFare;
+    const walletBalance = profile?.wallet_balance || 0;
+    
+    if (walletBalance > 0) {
+      wUsed = Math.min(discountedFare, walletBalance);
+      sAmount = discountedFare - wUsed;
+    }
+    
+    setWalletUsed(wUsed);
+    setStripeAmount(sAmount);
+    
+    if (sAmount <= 0) {
+      setClientSecret('wallet_only');
+      setShowPaymentGateway(true);
+      return;
+    }
+    
     try {
       const res = await fetch('http://localhost:4242/create-payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: finalFare })
+        body: JSON.stringify({ amount: sAmount })
       });
       const data = await res.json();
       if (data.clientSecret) {
@@ -636,11 +661,13 @@ const RiderView = () => {
 
       {showPaymentGateway && clientSecret && (
         <PaymentGateway 
-          clientSecret={clientSecret}
-          amount={finalFare!}
-          rideId={currentDispatchId!}
-          onSuccess={handlePaymentSuccess}
-          onCancel={() => setShowPaymentGateway(false)}
+          clientSecret={clientSecret} 
+          amount={finalFare!} 
+          stripeAmount={stripeAmount}
+          walletUsed={walletUsed}
+          rideId={currentDispatchId!} 
+          onSuccess={handlePaymentSuccess} 
+          onCancel={() => setShowPaymentGateway(false)} 
         />
       )}
     </div>

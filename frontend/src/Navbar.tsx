@@ -20,15 +20,17 @@ interface MenuButtonProps {
 const Navbar = () => {
   const { profile, setProfile } = useUserStore(); // Pulling profile from store
   const [isOpen, setIsOpen] = useState(false);
-  // Initialize state directly from current DOM/LocalStorage to prevent flicker
+  const [isSharing, setIsSharing] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => 
     document.documentElement.classList.contains('dark') || localStorage.getItem('theme') === 'dark'
   );
   const navigate = useNavigate();
 
   const handleReferral = async () => {
+    if (isSharing) return;
+    
     try {
-      // Use profile from store instead of an extra network call
+      setIsSharing(true);
       const userId = profile?.id;
       if (!userId) return;
 
@@ -45,10 +47,27 @@ const Navbar = () => {
         await navigator.clipboard.writeText(referralLink);
         alert("Referral link copied!");
       }
-    } catch (err) {
-      console.error('Error sharing:', err);
+    } catch (err: any) {
+      // If the user aborts the share sheet, do not attempt to copy to clipboard because 
+      // the document will have lost focus and throw a NotAllowedError.
+      if (err.name !== 'AbortError') {
+        console.error('Error sharing:', err);
+        const userId = profile?.id;
+        if (userId) {
+          try {
+            const referralLink = `${window.location.origin}/?ref=${userId}`;
+            await navigator.clipboard.writeText(referralLink);
+            alert("Referral link copied!");
+          } catch (e) {
+            console.error("Clipboard write failed", e);
+          }
+        }
+      }
+    } finally {
+      setIsSharing(false);
     }
   };
+
 
   const toggleDarkMode = () => {
     const newMode = !isDarkMode;
@@ -85,15 +104,28 @@ const Navbar = () => {
       </div>
 
       <div style={{ position: 'relative' }}>
-        <motion.button 
+        <motion.button
+          whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={() => setIsOpen(!isOpen)}
-          style={{ ...pfpButtonStyle, overflow: 'hidden' }}
+          style={{ 
+            ...pfpButtonStyle, 
+            overflow: 'visible',
+            border: profile?.is_premium ? '2px solid #fbbf24' : 'none',
+            position: 'relative'
+          }}
         >
-          {profile?.avatar_url ? (
-            <img src={profile.avatar_url} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          ) : (
-            <User size={22} color="white" />
+          <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden' }}>
+            {profile?.avatar_url ? (
+              <img src={profile.avatar_url} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <User size={22} color="white" />
+            )}
+          </div>
+          {profile?.is_premium && (
+            <div style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#fbbf24', borderRadius: '50%', padding: '2px' }}>
+              <Crown size={12} color="#000" />
+            </div>
           )}
         </motion.button>
 
@@ -111,11 +143,24 @@ const Navbar = () => {
                   style={menuHeaderStyle} 
                   onClick={() => { navigate('/profile'); setIsOpen(false); }}
                 >
-                   <div style={{ ...largePfpStyle, borderRadius: '50%', overflow: 'hidden' }}>
-                     {profile?.avatar_url ? (
-                       <img src={profile.avatar_url} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                     ) : (
-                       <User size={24} color="#2563eb"/>
+                   <div style={{ 
+                     ...largePfpStyle, 
+                     borderRadius: '50%', 
+                     overflow: 'visible',
+                     position: 'relative',
+                     border: profile?.is_premium ? '3px solid #fbbf24' : 'none'
+                   }}>
+                     <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden' }}>
+                       {profile?.avatar_url ? (
+                         <img src={profile.avatar_url} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                       ) : (
+                         <User size={24} color="#2563eb"/>
+                       )}
+                     </div>
+                     {profile?.is_premium && (
+                       <div style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: '#fbbf24', borderRadius: '50%', padding: '4px' }}>
+                         <Crown size={16} color="#000" />
+                       </div>
                      )}
                    </div>
                    <div style={{ flex: 1 }}>
@@ -143,7 +188,7 @@ const Navbar = () => {
                     </button>
                   </div>
 
-                  <MenuButton icon={<Crown size={18} color="#eab308"/>} label="NexRide Gold" />
+                  <MenuButton icon={<Crown size={18} color="#eab308"/>} label="NexRide Elite" onClick={() => navigate('/premium')} />
                   
                   <MenuButton 
                     icon={<Users size={18} color="#2563eb"/>} 

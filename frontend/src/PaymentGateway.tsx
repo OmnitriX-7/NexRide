@@ -11,12 +11,15 @@ const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 
 interface PaymentGatewayProps {
   clientSecret: string;
   amount: number;
-  rideId: string;
+  stripeAmount?: number;
+  walletUsed?: number;
+  rideId?: string;
+  type?: 'ride' | 'subscription';
   onSuccess: () => void;
   onCancel: () => void;
 }
 
-const CheckoutForm = ({ amount, rideId, onSuccess, onCancel }: any) => {
+const CheckoutForm = ({ amount, stripeAmount, walletUsed, rideId, clientSecret, type = 'ride', onSuccess, onCancel }: any) => {
   const stripe = useStripe();
   const elements = useElements();
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +50,54 @@ const CheckoutForm = ({ amount, rideId, onSuccess, onCancel }: any) => {
       return handleCashPayment();
     }
 
+    const updateDatabase = async (method: string) => {
+      if (type === 'subscription') {
+        // Only update premium flag, no ride dispatch
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          // Set expiry 30 days from now
+          const expiresAt = new Date();
+          expiresAt.setDate(expiresAt.getDate() + 30);
+          await supabase.from('profiles').update({ 
+            is_premium: true, 
+            premium_expires_at: expiresAt.toISOString() 
+          }).eq('id', user.id);
+        }
+        onSuccess();
+        return;
+      }
+
+      // 1. Mark ride as paid
+      const { error: dbError } = await supabase
+        .from('ride_dispatches')
+        .update({ payment_status: 'paid', payment_method: method })
+        .eq('id', rideId);
+      
+      if (dbError) {
+        setError("Payment succeeded but database update failed.");
+        setProcessing(false);
+        return;
+      }
+      
+      // 2. Deduct wallet balance if used
+      if (walletUsed > 0) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase.from('profiles').select('wallet_balance').eq('id', user.id).single();
+          if (profile) {
+            await supabase.from('profiles').update({ wallet_balance: Math.max(0, profile.wallet_balance - walletUsed) }).eq('id', user.id);
+          }
+        }
+      }
+      
+      onSuccess();
+    };
+
+    if (clientSecret === 'wallet_only') {
+      await updateDatabase('wallet');
+      return;
+    }
+
     if (!stripe || !elements) return;
     setProcessing(true);
 
@@ -67,17 +118,7 @@ const CheckoutForm = ({ amount, rideId, onSuccess, onCancel }: any) => {
       setError(confirmError.message || "Payment failed");
       setProcessing(false);
     } else if (paymentIntent && paymentIntent.status === 'succeeded') {
-      // Update Database
-      const { error: dbError } = await supabase
-        .from('ride_dispatches')
-        .update({ payment_status: 'paid', payment_method: 'stripe' })
-        .eq('id', rideId);
-      
-      if (dbError) {
-        setError("Payment succeeded but database update failed.");
-      } else {
-        onSuccess();
-      }
+      await updateDatabase('stripe');
     } else {
       setError("Payment processing...");
       setProcessing(false);
@@ -105,12 +146,19 @@ const CheckoutForm = ({ amount, rideId, onSuccess, onCancel }: any) => {
 
       {paymentMethod === 'card' ? (
         <div style={stripeContainerStyle}>
-          <PaymentElement options={{ layout: 'tabs' }} />
+          {clientSecret === 'wallet_only' ? (
+            <div style={cashInfoStyle}>
+              <h3>Free Ride!</h3>
+              <p>Your wallet balance covers the entire cost of this ride.</p>
+            </div>
+          ) : (
+            <PaymentElement options={{ layout: 'tabs' }} />
+          )}
         </div>
       ) : (
         <div style={cashInfoStyle}>
           <h3>Pay Driver Directly</h3>
-          <p>Please pay the driver <b>${amount.toFixed(2)}</b> in cash at the end of your trip.</p>
+          <p>Please pay the driver <b>₹{stripeAmount?.toFixed(2)}</b> in cash at the end of your trip.</p>
         </div>
       )}
 
@@ -127,8 +175,8 @@ const CheckoutForm = ({ amount, rideId, onSuccess, onCancel }: any) => {
           <button type="button" onClick={onCancel} style={cancelBtnStyle} disabled={processing}>
             Cancel
           </button>
-          <button type="submit" style={payBtnStyle} disabled={processing || (!stripe && paymentMethod === 'card')}>
-            {processing ? 'Processing...' : `Pay $${amount.toFixed(2)}`}
+          <button type="submit" style={payBtnStyle} disabled={processing || (!stripe && paymentMethod === 'card' && clientSecret !== 'wallet_only')}>
+            {processing ? 'Processing...' : `Pay ₹${(paymentMethod === 'card' ? stripeAmount : amount)?.toFixed(2)}`}
           </button>
         </div>
       </div>
@@ -136,7 +184,9 @@ const CheckoutForm = ({ amount, rideId, onSuccess, onCancel }: any) => {
   );
 };
 
-export const PaymentGateway = ({ clientSecret, amount, rideId, onSuccess, onCancel }: PaymentGatewayProps) => {
+export const PaymentGateway = ({ clientSecret, amount, stripeAmount, walletUsed, rideId, type = 'ride', onSuccess, onCancel }: PaymentGatewayProps) => {
+  const isWalletOnly = clientSecret === 'wallet_only';
+  
   return (
     <div style={overlayStyle}>
       <motion.div 
@@ -145,14 +195,56 @@ export const PaymentGateway = ({ clientSecret, amount, rideId, onSuccess, onCanc
         style={modalStyle}
       >
         <div style={headerStyle}>
-          <h2>Complete Payment</h2>
+          <h2>{type === 'subscription' ? 'Subscribe to Elite' : 'Complete Payment'}</h2>
           <p>NexRide Secure Checkout</p>
+          
+          <div style={{ marginTop: '16px', background: '#fff', borderRadius: '12px', padding: '16px', textAlign: 'left', border: '1px solid #e2e8f0' }}>
+            {type === 'subscription' ? (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span>NexRide Elite (30 Days):</span>
+                  <span>₹499.00</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', borderTop: '1px solid #e2e8f0', paddingTop: '8px', marginTop: '8px' }}>
+                  <span>Total to Pay:</span>
+                  <span>₹499.00</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span>Base Fare:</span>
+                  <span>₹{amount.toFixed(2)}</span>
+                </div>
+                {amount - (stripeAmount || 0) - (walletUsed || 0) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: '#16a34a' }}>
+                    <span>Elite Discount:</span>
+                    <span>-₹{(amount - (stripeAmount || 0) - (walletUsed || 0)).toFixed(2)}</span>
+                  </div>
+                )}
+                {walletUsed! > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: '#2563eb' }}>
+                    <span>Wallet Applied:</span>
+                    <span>-₹{walletUsed!.toFixed(2)}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', borderTop: '1px solid #e2e8f0', paddingTop: '8px', marginTop: '8px' }}>
+                  <span>Total to Pay:</span>
+                  <span>₹{stripeAmount?.toFixed(2)}</span>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {clientSecret ? (
-          <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
-            <CheckoutForm amount={amount} rideId={rideId} onSuccess={onSuccess} onCancel={onCancel} />
-          </Elements>
+          isWalletOnly ? (
+            <CheckoutForm amount={amount} stripeAmount={stripeAmount} walletUsed={walletUsed} rideId={rideId} clientSecret={clientSecret} type={type} onSuccess={onSuccess} onCancel={onCancel} />
+          ) : (
+            <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
+              <CheckoutForm amount={amount} stripeAmount={stripeAmount} walletUsed={walletUsed} rideId={rideId} clientSecret={clientSecret} type={type} onSuccess={onSuccess} onCancel={onCancel} />
+            </Elements>
+          )
         ) : (
           <div style={{ padding: '20px', textAlign: 'center' }}>
             <p>Initializing secure payment gateway...</p>

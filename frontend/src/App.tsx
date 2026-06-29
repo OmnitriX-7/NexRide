@@ -12,6 +12,7 @@ import ProfileDashboard from './ProfileDashboard';
 import Navbar from './Navbar';
 import Leaderboard from './Leaderboard';
 import PaymentsDashboard from './PaymentsDashboard';
+import PremiumView from './PremiumView';
 
 function App() {
   const { setProfile, hasProfile, setHasProfile } = useUserStore();
@@ -29,6 +30,14 @@ function App() {
       if (error) throw error;
 
       if (data) {
+        // Enforce premium expiry
+        if (data.is_premium && data.premium_expires_at) {
+          if (new Date(data.premium_expires_at) < new Date()) {
+            data.is_premium = false;
+            // Optionally update DB here in background
+            supabase.from('profiles').update({ is_premium: false }).eq('id', userId);
+          }
+        }
         setProfile(data);
         setHasProfile(data.onboarded); 
         return data.onboarded;
@@ -160,6 +169,16 @@ function App() {
               <>
                 <Navbar />
                 <PaymentsDashboard />
+              </>
+            ))
+          } />
+
+          <Route path="/premium" element={
+            !session ? <Navigate to="/" replace /> :
+            (!hasProfile ? <Navigate to="/onboarding" replace /> : (
+              <>
+                <Navbar />
+                <PremiumView />
               </>
             ))
           } />
