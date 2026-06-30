@@ -9,6 +9,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { supabase } from './supabaseClient'; 
 import { useUserStore } from './store'; // Added store import
+import { ShareModal } from './ShareModal';
 
 interface MenuButtonProps {
   icon: React.ReactNode;
@@ -20,52 +21,15 @@ interface MenuButtonProps {
 const Navbar = () => {
   const { profile, setProfile } = useUserStore(); // Pulling profile from store
   const [isOpen, setIsOpen] = useState(false);
-  const [isSharing, setIsSharing] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => 
     document.documentElement.classList.contains('dark') || localStorage.getItem('theme') === 'dark'
   );
+  const [showShareModal, setShowShareModal] = useState(false);
   const navigate = useNavigate();
 
-  const handleReferral = async () => {
-    if (isSharing) return;
-    
-    try {
-      setIsSharing(true);
-      const userId = profile?.id;
-      if (!userId) return;
-
-      const referralLink = `${window.location.origin}/?ref=${userId}`;
-      const shareData = {
-        title: 'Join NexRide',
-        text: 'Use my link to join NexRide and we both get ride discounts!',
-        url: referralLink,
-      };
-
-      if (navigator.share) {
-        await navigator.share(shareData);
-      } else {
-        await navigator.clipboard.writeText(referralLink);
-        alert("Referral link copied!");
-      }
-    } catch (err: any) {
-      // If the user aborts the share sheet, do not attempt to copy to clipboard because 
-      // the document will have lost focus and throw a NotAllowedError.
-      if (err.name !== 'AbortError') {
-        console.error('Error sharing:', err);
-        const userId = profile?.id;
-        if (userId) {
-          try {
-            const referralLink = `${window.location.origin}/?ref=${userId}`;
-            await navigator.clipboard.writeText(referralLink);
-            alert("Referral link copied!");
-          } catch (e) {
-            console.error("Clipboard write failed", e);
-          }
-        }
-      }
-    } finally {
-      setIsSharing(false);
-    }
+  const handleReferral = () => {
+    setShowShareModal(true);
+    setIsOpen(false); // Close the side menu when opening the modal
   };
 
 
@@ -213,6 +177,13 @@ const Navbar = () => {
           )}
         </AnimatePresence>
       </div>
+
+      {showShareModal && profile?.id && (
+        <ShareModal 
+          referralLink={`${window.location.origin}/?ref=${profile.id}`} 
+          onClose={() => setShowShareModal(false)} 
+        />
+      )}
     </header>
   );
 };

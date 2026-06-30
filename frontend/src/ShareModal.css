@@ -4,7 +4,8 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -14,128 +15,149 @@
 
 .share-modal {
   background: white;
-  border-radius: 20px;
+  border-radius: 24px;
   width: 100%;
-  max-width: 400px;
-  padding: 24px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  max-width: 420px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  position: relative;
+  overflow: hidden;
 }
 
 .dark .share-modal {
-  background: #1e293b;
+  background: #0f172a;
   color: white;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
 }
 
-.share-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.share-header h2 {
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 700;
-}
-
-.close-btn {
-  background: none;
+.share-close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(255, 255, 255, 0.2);
   border: none;
-  color: #64748b;
+  color: white;
   cursor: pointer;
-  padding: 4px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: 0.2s;
+  z-index: 10;
+  backdrop-filter: blur(8px);
 }
 
-.close-btn:hover {
-  background: #f1f5f9;
+.share-close-btn:hover {
+  background: rgba(255, 255, 255, 0.4);
+  transform: scale(1.1);
 }
 
-.dark .close-btn:hover {
-  background: #334155;
-  color: #cbd5e1;
+.share-header-banner {
+  background: linear-gradient(135deg, #2563eb, #8b5cf6);
+  padding: 40px 24px 30px;
+  text-align: center;
+  color: white;
+  position: relative;
 }
 
-.share-desc {
-  color: #64748b;
+.gift-icon-container {
+  width: 64px;
+  height: 64px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+}
+
+.share-header-banner h2 {
+  margin: 0 0 8px;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.share-header-banner p {
+  margin: 0;
   font-size: 0.95rem;
-  margin-bottom: 24px;
-  line-height: 1.5;
+  opacity: 0.9;
+  line-height: 1.4;
 }
 
-.dark .share-desc {
+.share-content {
+  padding: 24px;
+}
+
+.section-title {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #64748b;
+  margin: 0 0 16px;
+  font-weight: 700;
+}
+
+.dark .section-title {
   color: #94a3b8;
 }
 
-.share-options {
+.share-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   margin-bottom: 24px;
 }
 
 .share-btn {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px;
-  border-radius: 12px;
+  padding: 16px 8px;
+  border-radius: 16px;
   text-decoration: none;
   font-weight: 600;
-  font-size: 0.95rem;
-  transition: transform 0.2s, filter 0.2s;
+  font-size: 0.85rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+  background: #f8fafc;
+  color: #334155;
+}
+
+.dark .share-btn {
+  background: #1e293b;
+  color: #cbd5e1;
 }
 
 .share-btn:hover {
   transform: translateY(-2px);
-  filter: brightness(1.1);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.05);
 }
 
-.share-btn.whatsapp {
-  background: #25D366;
-  color: white;
-}
-
-.share-btn.twitter {
-  background: #1DA1F2;
-  color: white;
-}
-
-.share-btn.facebook {
-  background: #1877F2;
-  color: white;
-}
-
-.share-btn.email {
-  background: #64748b;
-  color: white;
-}
+.share-btn.whatsapp { color: #25D366; }
+.share-btn.twitter { color: #1DA1F2; }
+.share-btn.facebook { color: #1877F2; }
+.share-btn.telegram { color: #229ED9; }
+.share-btn.linkedin { color: #0A66C2; }
+.share-btn.email { color: #ea4335; }
 
 .copy-section {
-  border-top: 1px solid #e2e8f0;
-  padding-top: 20px;
-}
-
-.dark .copy-section {
-  border-top-color: #334155;
+  border-radius: 12px;
 }
 
 .link-container {
   display: flex;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: #f1f5f9;
   border-radius: 12px;
   overflow: hidden;
+  border: 1px solid #e2e8f0;
 }
 
 .dark .link-container {
-  background: #0f172a;
+  background: #1e293b;
   border-color: #334155;
 }
 
@@ -147,6 +169,7 @@
   color: #475569;
   font-size: 0.9rem;
   outline: none;
+  font-family: monospace;
 }
 
 .dark .link-container input {
@@ -161,7 +184,7 @@
   font-weight: 600;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -171,5 +194,5 @@
 }
 
 .link-container button.copied {
-  background: #16a34a;
+  background: #10b981;
 }
