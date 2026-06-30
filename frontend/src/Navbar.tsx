@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from './supabaseClient'; 
 import { useUserStore } from './store'; // Added store import
 import { ShareModal } from './ShareModal';
+import { RateAppModal } from './RateAppModal';
 
 interface MenuButtonProps {
   icon: React.ReactNode;
@@ -25,11 +26,17 @@ const Navbar = () => {
     document.documentElement.classList.contains('dark') || localStorage.getItem('theme') === 'dark'
   );
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showRateModal, setShowRateModal] = useState(false);
   const navigate = useNavigate();
 
   const handleReferral = () => {
     setShowShareModal(true);
     setIsOpen(false); // Close the side menu when opening the modal
+  };
+
+  const handleRateApp = () => {
+    setShowRateModal(true);
+    setIsOpen(false);
   };
 
 
@@ -160,7 +167,7 @@ const Navbar = () => {
                     onClick={handleReferral}
                   />
 
-                  <MenuButton icon={<Star size={18}/>} label="Rate App" />
+                  <MenuButton icon={<Star size={18}/>} label="Rate App" onClick={handleRateApp} />
                   <MenuButton icon={<ShieldAlert size={18} color="#ef4444"/>} label="SOS / Safety" />
                   
                   <div style={{ borderTop: '1px solid var(--border-subtle)', marginTop: '8px', paddingTop: '8px' }}>
@@ -182,6 +189,12 @@ const Navbar = () => {
         <ShareModal 
           referralLink={`${window.location.origin}/?ref=${profile.id}`} 
           onClose={() => setShowShareModal(false)} 
+        />
+      )}
+      {showRateModal && profile?.id && (
+        <RateAppModal 
+          userId={profile.id} 
+          onClose={() => setShowRateModal(false)} 
         />
       )}
     </header>

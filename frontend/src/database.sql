@@ -23,6 +23,27 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS public.coupons (
+  code TEXT PRIMARY KEY,
+  discount_percentage INT NOT NULL,
+  valid_until TIMESTAMP WITH TIME ZONE,
+  max_uses INT DEFAULT 1,
+  times_used INT DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS public.app_feedback (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  rating INT NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  feedback_text TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- RLS for app_feedback
+ALTER TABLE public.app_feedback ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can insert their own feedback" ON public.app_feedback FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can view their own feedback" ON public.app_feedback FOR SELECT USING (auth.uid() = user_id);
+
 CREATE TABLE IF NOT EXISTS public.drivers (
   id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
   status TEXT DEFAULT 'offline' CHECK (status IN ('offline', 'available', 'busy')),
