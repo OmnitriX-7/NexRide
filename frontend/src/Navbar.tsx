@@ -27,6 +27,7 @@ const Navbar = () => {
   );
   const [showShareModal, setShowShareModal] = useState(false);
   const [showRateModal, setShowRateModal] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const navigate = useNavigate();
 
   const handleReferral = () => {
@@ -52,13 +53,16 @@ const Navbar = () => {
     }
   };
 
-  const handleLogout = async () => {
-    if (window.confirm("Are you sure you want to log out?")) {
-      localStorage.removeItem('active_ride_id');
-      await supabase.auth.signOut();
-      setProfile(null); // Clear store on logout
-      navigate('/', { replace: true });
-    }
+  const handleLogoutClick = () => {
+    setShowLogoutModal(true);
+    setIsOpen(false);
+  };
+
+  const confirmLogout = async () => {
+    localStorage.removeItem('active_ride_id');
+    await supabase.auth.signOut();
+    setProfile(null); // Clear store on logout
+    navigate('/', { replace: true });
   };
 
   return (
@@ -86,7 +90,7 @@ const Navbar = () => {
             position: 'relative'
           }}
         >
-          <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden' }}>
+          <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             {profile?.avatar_url ? (
               <img src={profile.avatar_url} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
@@ -94,7 +98,7 @@ const Navbar = () => {
             )}
           </div>
           {profile?.is_premium && (
-            <div style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#fbbf24', borderRadius: '50%', padding: '2px' }}>
+            <div style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: '#fbbf24', borderRadius: '50%', padding: '3px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
               <Crown size={12} color="#000" />
             </div>
           )}
@@ -121,7 +125,7 @@ const Navbar = () => {
                      position: 'relative',
                      border: profile?.is_premium ? '3px solid #fbbf24' : 'none'
                    }}>
-                     <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden' }}>
+                     <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                        {profile?.avatar_url ? (
                          <img src={profile.avatar_url} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                        ) : (
@@ -129,8 +133,8 @@ const Navbar = () => {
                        )}
                      </div>
                      {profile?.is_premium && (
-                       <div style={{ position: 'absolute', bottom: '-4px', right: '-4px', background: '#fbbf24', borderRadius: '50%', padding: '4px' }}>
-                         <Crown size={16} color="#000" />
+                       <div style={{ position: 'absolute', bottom: '-6px', right: '-6px', background: '#fbbf24', borderRadius: '50%', padding: '4px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                         <Crown size={14} color="#000" />
                        </div>
                      )}
                    </div>
@@ -175,7 +179,7 @@ const Navbar = () => {
                       icon={<LogOut size={18} color="#ef4444" />} 
                       label="Log Out" 
                       isDestructive={true}
-                      onClick={handleLogout} 
+                      onClick={handleLogoutClick} 
                     />
                   </div>
                 </div>
@@ -197,6 +201,50 @@ const Navbar = () => {
           onClose={() => setShowRateModal(false)} 
         />
       )}
+
+      {/* Logout Confirmation Modal */}
+      <AnimatePresence>
+        {showLogoutModal && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            display: 'flex', justifyContent: 'center', alignItems: 'center',
+            zIndex: 2000, padding: '20px'
+          }}>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              style={{
+                background: 'var(--bg-main)', padding: '32px', borderRadius: '24px',
+                width: '100%', maxWidth: '360px', textAlign: 'center',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
+              }}
+            >
+              <div style={{ background: '#fef2f2', width: '56px', height: '56px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 auto 16px' }}>
+                <LogOut size={28} color="#ef4444" />
+              </div>
+              <h2 style={{ margin: '0 0 8px', fontSize: '20px', color: 'var(--text-main)' }}>Sign Out</h2>
+              <p style={{ margin: '0 0 24px', color: 'var(--text-secondary)', fontSize: '15px' }}>Are you sure you want to log out of NexRide?</p>
+              
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button 
+                  onClick={() => setShowLogoutModal(false)}
+                  style={{ flex: 1, padding: '12px', borderRadius: '12px', border: '1px solid var(--border-subtle)', background: 'transparent', color: 'var(--text-main)', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmLogout}
+                  style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: '#ef4444', color: 'white', fontWeight: '600', cursor: 'pointer' }}
+                >
+                  Log Out
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </header>
   );
 };

@@ -11,6 +11,7 @@ const PremiumView = () => {
   const [showPayment, setShowPayment] = useState(false);
   const [clientSecret, setClientSecret] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [walletLoading, setWalletLoading] = useState(false);
 
   const handleSubscribe = async () => {
     if (!profile?.id) return;
@@ -45,6 +46,40 @@ const PremiumView = () => {
       setProfile({ ...profile!, is_premium: true });
     }
     showToast('Welcome to NexRide Elite! 🎉');
+  };
+
+  const handleWalletPurchase = async () => {
+    if (!profile?.id || (profile.wallet_balance || 0) < 499) return;
+    setWalletLoading(true);
+    try {
+      // 1. Deduct wallet balance
+      const newBalance = (profile.wallet_balance || 0) - 499;
+      
+      // 2. Set expiry date (30 days from now)
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
+      
+      const { error } = await supabase.from('profiles').update({
+        wallet_balance: newBalance,
+        is_premium: true,
+        premium_expires_at: expiresAt.toISOString()
+      }).eq('id', profile.id);
+      
+      if (error) throw error;
+      
+      // Update local state
+      setProfile({
+        ...profile,
+        wallet_balance: newBalance,
+        is_premium: true,
+        premium_expires_at: expiresAt.toISOString()
+      });
+      showToast('Welcome to NexRide Elite! 🎉');
+    } catch (err) {
+      showToast('Error processing wallet payment.');
+    } finally {
+      setWalletLoading(false);
+    }
   };
 
   const getDaysRemaining = () => {
@@ -145,10 +180,25 @@ const PremiumView = () => {
             <span className="price">₹499</span>
             <span className="period">/ 30 days</span>
           </div>
-          <button className="subscribe-btn" onClick={handleSubscribe} disabled={isLoading}>
+          <button className="subscribe-btn" onClick={handleSubscribe} disabled={isLoading || walletLoading}>
             {isLoading ? "Processing..." : "Subscribe Now"} <ArrowRight size={20} />
           </button>
-          <p className="cancel-text">One-time payment for 30 days of Elite status.</p>
+          
+          {profile && (profile.wallet_balance || 0) >= 499 && (
+            <button 
+              onClick={handleWalletPurchase}
+              disabled={isLoading || walletLoading}
+              style={{
+                width: '100%', padding: '16px', borderRadius: '100px', border: '1.5px solid rgba(255,255,255,0.2)',
+                background: 'transparent', color: 'white', fontWeight: '700', fontSize: '16px',
+                cursor: 'pointer', marginTop: '12px', transition: 'background 0.2s'
+              }}
+            >
+              {walletLoading ? "Processing..." : `Pay with Wallet (Bal: ₹${profile.wallet_balance})`}
+            </button>
+          )}
+
+          <p className="cancel-text" style={{ marginTop: '16px' }}>One-time payment for 30 days of Elite status.</p>
         </motion.div>
       </div>
 
