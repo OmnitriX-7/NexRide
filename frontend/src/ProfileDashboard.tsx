@@ -30,6 +30,8 @@ const ProfileDashboard = () => {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [stats, setStats] = useState({ totalRides: 0, memberSince: '' });
+  const [activeTab, setActiveTab] = useState<'settings' | 'history'>('settings');
+  const [tripHistory, setTripHistory] = useState<any[]>([]);
 
   const [formData, setFormData] = useState<ProfileFormData>({
     full_name: profile?.full_name || '',
@@ -91,6 +93,25 @@ const ProfileDashboard = () => {
     fetchFullProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.id]);
+
+  useEffect(() => {
+    const fetchTripHistory = async () => {
+      if (!profile?.id || activeTab !== 'history') return;
+      
+      const roleColumn = profile.role === 'driver' ? 'driver_id' : 'rider_id';
+      const { data, error } = await supabase
+        .from('ride_dispatches')
+        .select('*')
+        .eq(roleColumn, profile.id)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false });
+        
+      if (!error && data) {
+        setTripHistory(data);
+      }
+    };
+    fetchTripHistory();
+  }, [profile?.id, activeTab, profile?.role]);
 
   const fetchDriverDetails = async () => {
     const { data } = await supabase
@@ -256,149 +277,209 @@ const ProfileDashboard = () => {
           </div>
         </div>
 
-        {/* Content Sections */}
-        <div className="profile-content">
-          {/* Stats Bar */}
-          <div className="stats-bar">
-            <div className="stat-item">
-              <Award size={20} className="stat-icon" />
-              <div>
-                <span className="stat-value">{stats.totalRides}</span>
-                <span className="stat-label">Total Rides</span>
+        {/* Tabs Container */}
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem', background: 'var(--input-bg)', padding: '4px', borderRadius: '12px' }}>
+          <button 
+            onClick={() => setActiveTab('settings')}
+            style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: activeTab === 'settings' ? 'var(--surface)' : 'transparent', color: activeTab === 'settings' ? 'var(--text-primary)' : 'var(--text-secondary)', fontWeight: activeTab === 'settings' ? '700' : '500', cursor: 'pointer', transition: 'all 0.2s', boxShadow: activeTab === 'settings' ? '0 2px 8px rgba(0,0,0,0.1)' : 'none' }}
+          >
+            Settings
+          </button>
+          <button 
+            onClick={() => setActiveTab('history')}
+            style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: activeTab === 'history' ? 'var(--surface)' : 'transparent', color: activeTab === 'history' ? 'var(--text-primary)' : 'var(--text-secondary)', fontWeight: activeTab === 'history' ? '700' : '500', cursor: 'pointer', transition: 'all 0.2s', boxShadow: activeTab === 'history' ? '0 2px 8px rgba(0,0,0,0.1)' : 'none' }}
+          >
+            Trip History
+          </button>
+        </div>
+
+        {activeTab === 'history' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {tripHistory.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-secondary)' }}>
+                <Car size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
+                <p>No completed trips yet.</p>
               </div>
-            </div>
-            <div className="stat-item">
-              {profile?.role === 'driver' ? (
-                <Star size={20} className="stat-icon" />
-              ) : (
-                <Trophy size={20} className="stat-icon" />
-              )}
-              <div>
-                <span className="stat-value">
-                  {profile?.role === 'driver' 
-                    ? (driverStats?.rating || '5.0') 
-                    : `Level ${profile?.level || 1}`}
-                </span>
-                <span className="stat-label">{profile?.role === 'driver' ? 'Rating' : 'Level'}</span>
-              </div>
-            </div>
-            <div className="stat-item">
-              <Clock size={20} className="stat-icon" />
-              <div>
-                <span className="stat-value">{stats.memberSince}</span>
-                <span className="stat-label">Member Since</span>
-              </div>
-            </div>
+            ) : (
+              tripHistory.map(trip => (
+                <div key={trip.id} style={{ background: 'var(--surface)', borderRadius: '16px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '13px', color: 'var(--text-secondary)', fontWeight: '600' }}>
+                      {new Date(trip.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                    <span style={{ fontSize: '15px', fontWeight: '800', color: themeColor }}>
+                      ₹{trip.fare_amount}
+                    </span>
+                  </div>
+                  
+                  <div style={{ position: 'relative', paddingLeft: '20px' }}>
+                    <div style={{ position: 'absolute', left: '4px', top: '6px', bottom: '6px', width: '2px', background: 'var(--border-subtle)' }} />
+                    
+                    <div style={{ position: 'relative', marginBottom: '12px' }}>
+                      <div style={{ position: 'absolute', left: '-21px', top: '4px', width: '10px', height: '10px', borderRadius: '50%', background: '#2563eb' }} />
+                      <div style={{ fontSize: '14px', fontWeight: '600' }}>{trip.pickup_name}</div>
+                    </div>
+                    
+                    <div style={{ position: 'relative' }}>
+                      <div style={{ position: 'absolute', left: '-21px', top: '4px', width: '10px', height: '10px', borderRadius: '50%', background: '#10b981' }} />
+                      <div style={{ fontSize: '14px', fontWeight: '600' }}>{trip.dropoff_name}</div>
+                    </div>
+                  </div>
+                  
+                  {trip.rider_rating && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
+                      <Star size={14} color="#fbbf24" fill="#fbbf24" />
+                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#fbbf24' }}>{trip.rider_rating} Stars</span>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
-
-          {/* General Information */}
-          <section className="info-section">
-            <h3>General Information</h3>
-            <div className="info-grid">
-              <InfoField 
-                icon={<User size={18} />} 
-                label="Full Name" 
-                value={formData.full_name} 
-                isEditing={isEditing} 
-                onChange={(val: string) => setFormData({...formData, full_name: val})} 
-              />
-              <InfoField 
-                icon={<Mail size={18} />} 
-                label="Email" 
-                value={profile?.email || 'N/A'} 
-                isEditing={false} // Email is usually immutable from profile dashboard
-              />
-              <InfoField 
-                icon={<Phone size={18} />} 
-                label="Phone" 
-                value={formData.phone_number} 
-                isEditing={isEditing} 
-                onChange={(val: string) => setFormData({...formData, phone_number: val})} 
-              />
-              <InfoField 
-                icon={<Calendar size={18} />} 
-                label="Age" 
-                value={formData.age} 
-                type="number"
-                isEditing={isEditing} 
-                onChange={(val: string) => setFormData({...formData, age: val})} 
-              />
-              <InfoField 
-                icon={<UserCircle size={18} />} 
-                label="Gender" 
-                value={formData.gender} 
-                isEditing={isEditing} 
-                onChange={(val: string) => setFormData({...formData, gender: val})} 
-                isSelect
-                options={['Male', 'Female', 'Other', 'Prefer not to say']}
-              />
-              <InfoField 
-                icon={<MapPin size={18} />} 
-                label="State" 
-                value={formData.state} 
-                isEditing={isEditing} 
-                onChange={(val: string) => setFormData({...formData, state: val})} 
-              />
-              <InfoField 
-                icon={<MapPin size={18} />} 
-                label="District / City" 
-                value={formData.district} 
-                isEditing={isEditing} 
-                onChange={(val: string) => setFormData({...formData, district: val})} 
-              />
-              <InfoField 
-                icon={<MapPin size={18} />} 
-                label="Area / House No." 
-                value={formData.area} 
-                isEditing={isEditing} 
-                onChange={(val: string) => setFormData({...formData, area: val})} 
-              />
-              <InfoField 
-                icon={<Phone size={18} color="#ef4444" />} 
-                label="Emergency Contact" 
-                value={formData.emergency_contact_phone} 
-                isEditing={isEditing} 
-                onChange={(val: string) => setFormData({...formData, emergency_contact_phone: val})} 
-              />
+        ) : (
+          <div className="profile-content">
+            {/* Stats Bar */}
+            <div className="stats-bar">
+              <div className="stat-item">
+                <Award size={20} className="stat-icon" />
+                <div>
+                  <span className="stat-value">{stats.totalRides}</span>
+                  <span className="stat-label">Total Rides</span>
+                </div>
+              </div>
+              <div className="stat-item">
+                {profile?.role === 'driver' ? (
+                  <Star size={20} className="stat-icon" />
+                ) : (
+                  <Trophy size={20} className="stat-icon" />
+                )}
+                <div>
+                  <span className="stat-value">
+                    {profile?.role === 'driver' 
+                      ? (driverStats?.rating || '5.0') 
+                      : `Level ${profile?.level || 1}`}
+                  </span>
+                  <span className="stat-label">{profile?.role === 'driver' ? 'Rating' : 'Level'}</span>
+                </div>
+              </div>
+              <div className="stat-item">
+                <Clock size={20} className="stat-icon" />
+                <div>
+                  <span className="stat-value">{stats.memberSince}</span>
+                  <span className="stat-label">Member Since</span>
+                </div>
+              </div>
             </div>
-            
-            <div className="bio-field">
-              <label><Edit3 size={16} /> Bio</label>
-              {isEditing ? (
-                <textarea 
-                  value={formData.bio} 
-                  onChange={(e) => setFormData({...formData, bio: e.target.value})}
-                  placeholder="Tell us about yourself..."
-                />
-              ) : (
-                <p className={!formData.bio ? 'placeholder' : ''}>
-                  {formData.bio || 'No bio provided yet.'}
-                </p>
-              )}
-            </div>
-          </section>
 
-          {/* Role Specific Section */}
-          {profile?.role === 'driver' && driverStats && (
-            <section className="info-section role-specific">
-              <h3>Vehicle & Professional Info</h3>
+            {/* General Information */}
+            <section className="info-section">
+              <h3>General Information</h3>
               <div className="info-grid">
-                <div className="static-field">
-                  <span className="field-label"><Car size={16} /> Vehicle Model</span>
-                  <span className="field-value">{driverStats.vehicle_model}</span>
-                </div>
-                <div className="static-field">
-                  <span className="field-label"><Briefcase size={16} /> License Plate</span>
-                  <span className="field-value">{driverStats.car_plate_number}</span>
-                </div>
-                <div className="static-field">
-                  <span className="field-label"><Star size={16} /> Driver Rating</span>
-                  <span className="field-value">{driverStats.rating} / 5.0</span>
-                </div>
+                <InfoField 
+                  icon={<User size={18} />} 
+                  label="Full Name" 
+                  value={formData.full_name} 
+                  isEditing={isEditing} 
+                  onChange={(val: string) => setFormData({...formData, full_name: val})} 
+                />
+                <InfoField 
+                  icon={<Mail size={18} />} 
+                  label="Email" 
+                  value={profile?.email || 'N/A'} 
+                  isEditing={false} // Email is usually immutable from profile dashboard
+                />
+                <InfoField 
+                  icon={<Phone size={18} />} 
+                  label="Phone" 
+                  value={formData.phone_number} 
+                  isEditing={isEditing} 
+                  onChange={(val: string) => setFormData({...formData, phone_number: val})} 
+                />
+                <InfoField 
+                  icon={<Calendar size={18} />} 
+                  label="Age" 
+                  value={formData.age} 
+                  type="number"
+                  isEditing={isEditing} 
+                  onChange={(val: string) => setFormData({...formData, age: val})} 
+                />
+                <InfoField 
+                  icon={<UserCircle size={18} />} 
+                  label="Gender" 
+                  value={formData.gender} 
+                  isEditing={isEditing} 
+                  onChange={(val: string) => setFormData({...formData, gender: val})} 
+                  isSelect
+                  options={['Male', 'Female', 'Other', 'Prefer not to say']}
+                />
+                <InfoField 
+                  icon={<MapPin size={18} />} 
+                  label="State" 
+                  value={formData.state} 
+                  isEditing={isEditing} 
+                  onChange={(val: string) => setFormData({...formData, state: val})} 
+                />
+                <InfoField 
+                  icon={<MapPin size={18} />} 
+                  label="District / City" 
+                  value={formData.district} 
+                  isEditing={isEditing} 
+                  onChange={(val: string) => setFormData({...formData, district: val})} 
+                />
+                <InfoField 
+                  icon={<MapPin size={18} />} 
+                  label="Area / House No." 
+                  value={formData.area} 
+                  isEditing={isEditing} 
+                  onChange={(val: string) => setFormData({...formData, area: val})} 
+                />
+                <InfoField 
+                  icon={<Phone size={18} color="#ef4444" />} 
+                  label="Emergency Contact" 
+                  value={formData.emergency_contact_phone} 
+                  isEditing={isEditing} 
+                  onChange={(val: string) => setFormData({...formData, emergency_contact_phone: val})} 
+                />
+              </div>
+              
+              <div className="bio-field">
+                <label><Edit3 size={16} /> Bio</label>
+                {isEditing ? (
+                  <textarea 
+                    value={formData.bio} 
+                    onChange={(e) => setFormData({...formData, bio: e.target.value})}
+                    placeholder="Tell us about yourself..."
+                  />
+                ) : (
+                  <p className={!formData.bio ? 'placeholder' : ''}>
+                    {formData.bio || 'No bio provided yet.'}
+                  </p>
+                )}
               </div>
             </section>
-          )}
-        </div>
+
+            {/* Role Specific Section */}
+            {profile?.role === 'driver' && driverStats && (
+              <section className="info-section role-specific">
+                <h3>Vehicle & Professional Info</h3>
+                <div className="info-grid">
+                  <div className="static-field">
+                    <span className="field-label"><Car size={16} /> Vehicle Model</span>
+                    <span className="field-value">{driverStats.vehicle_model}</span>
+                  </div>
+                  <div className="static-field">
+                    <span className="field-label"><Briefcase size={16} /> License Plate</span>
+                    <span className="field-value">{driverStats.car_plate_number}</span>
+                  </div>
+                  <div className="static-field">
+                    <span className="field-label"><Star size={16} /> Driver Rating</span>
+                    <span className="field-value">{driverStats.rating} / 5.0</span>
+                  </div>
+                </div>
+              </section>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, TrendingUp, Clock, Navigation, Search, XOctagon, Power, CarFront, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Star, TrendingUp, Clock, Navigation, Search, XOctagon, Power, CarFront, AlertCircle, CheckCircle2, Gauge } from 'lucide-react';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from './supabaseClient';
 import { useUserStore } from './store';
 import RiderMap from './RiderMap'; 
@@ -20,6 +21,10 @@ const DriverView = () => {
   const [completedRide, setCompletedRide] = useState<any>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [currentSpeed, setCurrentSpeed] = useState<number>(0);
+  const [weeklyEarnings, setWeeklyEarnings] = useState<any[]>([]);
+  const [weeklyHours, setWeeklyHours] = useState<any[]>([]);
+  const [driverRating, setDriverRating] = useState<string>('5.0');
   
   // SOS State
   const [showSOSModal, setShowSOSModal] = useState(false);
@@ -62,6 +67,10 @@ const DriverView = () => {
           await supabase.from('drivers').update({ status: 'offline' }).eq('id', user.id);
           setIsOnline(false);
         }
+
+        // Fetch driver rating
+        const { data: driverProfile } = await supabase.from('drivers').select('rating').eq('id', user.id).single();
+        if (driverProfile) setDriverRating(Number(driverProfile.rating || 5.0).toFixed(1));
       }
     };
     initDriver();
@@ -74,10 +83,19 @@ const DriverView = () => {
     if ((isOnline || activeRide) && driverId && navigator.geolocation) {
       watchId = navigator.geolocation.watchPosition(
         async (pos) => {
-          const { latitude, longitude } = pos.coords;
+          const { latitude, longitude, speed } = pos.coords;
           setCurrentLocation({ lat: latitude, lng: longitude });
+          if (speed !== null && speed >= 0) {
+            setCurrentSpeed(Math.round(speed * 3.6)); // Convert m/s to km/h
+          } else {
+            setCurrentSpeed(0);
+          }
           if (driverId) {
-            await supabase.from('drivers').update({ lat: latitude, lng: longitude }).eq('id', driverId);
+            await supabase.from('drivers').update({ 
+              lat: latitude, 
+              lng: longitude, 
+              speed: speed !== null && speed >= 0 ? Math.round(speed * 3.6) : 0 
+            }).eq('id', driverId);
           }
         },
         async (err) => {
@@ -92,6 +110,89 @@ const DriverView = () => {
       if (watchId !== undefined) navigator.geolocation.clearWatch(watchId);
     };
   }, [isOnline, activeRide, driverId]);
+
+  // --- ONLINE HEARTBEAT ---
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    if (driverId && (isOnline || activeRide)) {
+      const ping = async () => {
+        await supabase.rpc('log_driver_online_time', { p_driver_id: driverId, p_minutes: 1 });
+      };
+      
+      // Ping every 60 seconds
+      intervalId = setInterval(() => {
+        ping();
+      }, 60000);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [driverId, isOnline, activeRide]);
+
+  // --- FETCH WEEKLY EARNINGS ---
+  useEffect(() => {
+    const fetchEarnings = async () => {
+      if (!driverId) return;
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      const { data } = await supabase
+        .from('ride_dispatches')
+        .select('created_at, fare_amount')
+        .eq('driver_id', driverId)
+        .eq('status', 'completed')
+        .gte('created_at', sevenDaysAgo.toISOString());
+
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      // Initialize all days
+      const grouped = days.reduce((acc: any, day) => ({ ...acc, [day]: 0 }), {});
+
+      if (data) {
+        data.forEach((curr: any) => {
+          const dayName = days[new Date(curr.created_at).getDay()];
+          grouped[dayName] = (grouped[dayName] || 0) + Number(curr.fare_amount);
+        });
+      }
+      
+      const todayIdx = new Date().getDay();
+      // Reorder array so today is the last element
+      const orderedDays = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = (todayIdx - i + 7) % 7;
+        orderedDays.push(days[d]);
+      }
+
+      const chartData = orderedDays.map(day => ({
+        name: day,
+        earnings: grouped[day]
+      }));
+      setWeeklyEarnings(chartData);
+
+      // Fetch driver_daily_stats
+      const { data: statsData } = await supabase
+        .from('driver_daily_stats')
+        .select('stat_date, online_minutes')
+        .eq('driver_id', driverId)
+        .gte('stat_date', sevenDaysAgo.toISOString().split('T')[0]);
+
+      const groupedHours = days.reduce((acc: any, day) => ({ ...acc, [day]: 0 }), {});
+      if (statsData) {
+        statsData.forEach((curr: any) => {
+          const dayName = days[new Date(curr.stat_date).getDay()];
+          groupedHours[dayName] = (groupedHours[dayName] || 0) + curr.online_minutes;
+        });
+      }
+
+      const hoursChartData = orderedDays.map(day => ({
+        name: day,
+        hours: Number((groupedHours[day] / 60).toFixed(1))
+      }));
+      setWeeklyHours(hoursChartData);
+    };
+    fetchEarnings();
+  }, [driverId, activeRide, completedRide]);
 
   // --- 4. TOGGLE ONLINE STATUS ---
   const toggleOnlineStatus = async () => {
@@ -318,17 +419,7 @@ const DriverView = () => {
           )}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <AnimatePresence>
-            {incomingRequests.map((req) => (
-              <RequestCard 
-                key={req.id} 
-                request={req} 
-                handleResponse={handleResponse} 
-                driverLocation={currentLocation}
-              />
-            ))}
-          </AnimatePresence>
+        {/* INCOMING REQUESTS MOVED TO RIGHT PANEL */}
           {/* INCOMING FAKE CALL OVERLAY */}
       {showIncomingCall && (
         <IncomingCallModal onClose={(accepted) => { 
@@ -338,7 +429,6 @@ const DriverView = () => {
       )}
 
       {/* CANCEL RIDE CONFIRMATION MODAL MOVED TO ROOT */}
-        </div>
         {activeRide && !isEmergencyState && (
           <motion.div initial={{ y: 100 }} animate={{ y: 0 }} className="panel-card" style={{ borderTop: '5px solid #22c55e' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -414,24 +504,110 @@ const DriverView = () => {
           </motion.div>
         )}
 
-        {/* STATS GRID */}
+        {/* STATS GRID & CHART */}
         {!activeRide && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginTop: '1rem' }}>
-            <StatBox icon={<Star size={16} color="#eab308" />} label="4.9" sub="Rating" />
-            <StatBox icon={<TrendingUp size={16} color="#10b981" />} label="₹1,240" sub="Today" />
-            <StatBox icon={<Clock size={16} color="#3b82f6" />} label="3h" sub="Shift" />
-          </div>
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginTop: '1rem' }}>
+              <StatBox icon={<Star size={16} color="#eab308" />} label={driverRating} sub="Rating" />
+              <StatBox icon={<TrendingUp size={16} color="#10b981" />} label={`₹${weeklyEarnings[weeklyEarnings.length - 1]?.earnings || 0}`} sub="Today" />
+              <StatBox icon={<Clock size={16} color="#3b82f6" />} label={`${weeklyHours[weeklyHours.length - 1]?.hours || 0}h`} sub="Shift" />
+            </div>
+
+            {/* WEEKLY EARNINGS & HOURS CHARTS */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem', marginTop: '1rem' }}>
+              <div className="panel-card" style={{ padding: '1.5rem', backgroundColor: 'var(--surface)' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '16px' }}>Weekly Earnings</h3>
+                <div style={{ width: '100%', height: '180px' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={weeklyEarnings}>
+                      <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
+                      <Tooltip cursor={{ fill: 'var(--border-subtle)' }} contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: '8px', color: 'var(--text-primary)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} itemStyle={{ color: '#1f2937' }} formatter={(val: number) => [`₹${val}`, 'Earnings']} />
+                      <Bar dataKey="earnings" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="panel-card" style={{ padding: '1.5rem', backgroundColor: 'var(--surface)' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '16px' }}>Hours Online</h3>
+                <div style={{ width: '100%', height: '180px' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={weeklyHours}>
+                      <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
+                      <Tooltip cursor={{ fill: 'var(--border-subtle)' }} contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: '8px', color: 'var(--text-primary)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} itemStyle={{ color: '#1f2937' }} formatter={(val: number) => [`${val}h`, 'Hours Online']} />
+                      <Bar dataKey="hours" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </>
         )}
       </div>
 
-      <div className="map-layer">
-        <RiderMap 
-          userLocation={activeRide?.pickup_lat ? { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng } : null} 
-          destinationLocation={activeRide?.dest_lat ? { lat: activeRide.dest_lat, lng: activeRide.dest_lng } : null} 
-          driverLocation={currentLocation}
-          isDarkMode={isDarkMode} 
-        />
-        <div className="map-gradient-overlay" />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '24px', height: '100%' }}>
+        <div className="map-layer" style={{ flex: incomingRequests.length > 0 ? 0.5 : 1, transition: 'flex 0.3s ease' }}>
+          <RiderMap 
+            userLocation={activeRide?.pickup_lat ? { lat: activeRide.pickup_lat, lng: activeRide.pickup_lng } : null} 
+            destinationLocation={activeRide?.dest_lat ? { lat: activeRide.dest_lat, lng: activeRide.dest_lng } : null} 
+            driverLocation={currentLocation}
+            isDarkMode={isDarkMode} 
+          />
+          <div className="map-gradient-overlay" />
+          
+          {/* SPEEDOMETER OVERLAY */}
+          {isOnline && (
+            <div style={{ position: 'absolute', top: '16px', right: '16px', backgroundColor: 'var(--surface)', padding: '12px 16px', borderRadius: '20px', boxShadow: '0 4px 15px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '8px', zIndex: 10, border: '1px solid var(--border-subtle)' }}>
+              <Gauge size={24} color="#3b82f6" />
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: '20px', fontWeight: '900', lineHeight: '1', color: 'var(--text-main)' }}>{currentSpeed}</span>
+                <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>km/h</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* INCOMING REQUESTS PANEL */}
+        {incomingRequests.length > 0 && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }} 
+            animate={{ opacity: 1, y: 0 }}
+            style={{ 
+              flex: 0.5, 
+              display: 'flex', 
+              flexDirection: 'column', 
+              backgroundColor: 'var(--card-bg)', 
+              borderRadius: '24px', 
+              border: '1px solid var(--border-subtle)', 
+              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.05)',
+              padding: '24px',
+              overflow: 'hidden'
+            }}
+          >
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '20px', fontWeight: '900', color: 'var(--text-main)' }}>
+              Incoming Requests ({incomingRequests.length})
+            </h3>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(2, 1fr)', 
+              gap: '16px', 
+              overflowY: 'auto', 
+              paddingRight: '8px',
+              alignItems: 'start'
+            }}>
+              <AnimatePresence>
+                {incomingRequests.map((req) => (
+                  <RequestCard 
+                    key={req.id} 
+                    request={req} 
+                    handleResponse={handleResponse} 
+                    driverLocation={currentLocation}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
       </div>
 
       {/* EMERGENCY STATE OVERLAY */}

@@ -141,13 +141,15 @@ const CheckoutForm = ({ amount, walletUsed, rideId, clientSecret, type = 'ride',
         >
           <ShieldCheck size={18} /> Wallet
         </button>
-        <button 
-          type="button"
-          onClick={() => setPaymentMethod('cash')}
-          style={paymentMethod === 'cash' ? activeTabStyle : tabStyle}
-        >
-          <DollarSign size={18} /> Cash
-        </button>
+        {type !== 'subscription' && (
+          <button 
+            type="button"
+            onClick={() => setPaymentMethod('cash')}
+            style={paymentMethod === 'cash' ? activeTabStyle : tabStyle}
+          >
+            <DollarSign size={18} /> Cash
+          </button>
+        )}
       </div>
 
       {paymentMethod === 'card' && (
@@ -281,7 +283,7 @@ export const PaymentGateway = ({ clientSecret, amount, stripeAmount, walletUsed,
           <h2>{type === 'subscription' ? 'Subscribe to Elite' : 'Complete Payment'}</h2>
           <p>NexRide Secure Checkout</p>
           
-          <div style={{ marginTop: '16px', background: '#fff', borderRadius: '12px', padding: '16px', textAlign: 'left', border: '1px solid #e2e8f0' }}>
+          <div style={{ marginTop: '16px', backgroundColor: '#fff', borderRadius: '12px', padding: '16px', textAlign: 'left', border: '1px solid #e2e8f0' }}>
             {type === 'subscription' ? (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -352,9 +354,8 @@ const tabsStyle: React.CSSProperties = {
   display: 'flex', backgroundColor: '#f1f5f9', padding: '4px', borderRadius: '12px', gap: '4px'
 };
 const tabStyle: React.CSSProperties = {
-  flex: 1, padding: '12px', borderRadius: '8px', border: 'none', background: 'none',
-  cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
-  color: '#64748b', fontWeight: '600'
+  flex: 1, padding: '12px', borderRadius: '8px', border: 'none', backgroundColor: 'transparent',
+  color: '#64748b', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600'
 };
 const activeTabStyle: React.CSSProperties = {
   ...tabStyle, backgroundColor: 'white', color: '#0f172a', boxShadow: '0 2px 4px rgba(0,0,0,0.05)'

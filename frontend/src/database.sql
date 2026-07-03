@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS public.drivers (
   rating DECIMAL(3,2) DEFAULT 5.00,
   base_fare DECIMAL(10,2) DEFAULT 20.00, 
   lat DOUBLE PRECISION,
-  lng DOUBLE PRECISION
+  lng DOUBLE PRECISION,
+  speed INT DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS public.coupons (
@@ -80,8 +81,17 @@ CREATE TABLE IF NOT EXISTS public.ride_dispatches (
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'in_progress', 'emergency', 'rejected', 'timeout', 'cancelled', 'completed')),
   payment_status TEXT DEFAULT 'pending' CHECK (payment_status IN ('pending', 'paid')),
   payment_method TEXT,
+  rider_rating INT CHECK (rider_rating >= 1 AND rider_rating <= 5),
+  rider_review TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.driver_daily_stats (
+  driver_id UUID REFERENCES public.drivers(id) ON DELETE CASCADE,
+  stat_date DATE NOT NULL,
+  online_minutes INT DEFAULT 0,
+  PRIMARY KEY (driver_id, stat_date)
 );
 
 -- ==========================================
@@ -237,8 +247,56 @@ USING (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::tex
 WITH CHECK (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()::text);
 
 -- ==========================================
--- 4. PROCEDURAL FUNCTIONS (RPCs)
+-- 4. RPC FUNCTIONS
 -- ==========================================
+
+-- Function to log driver online time
+CREATE OR REPLACE FUNCTION log_driver_online_time(
+  p_driver_id UUID,
+  p_minutes INT
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  INSERT INTO public.driver_daily_stats (driver_id, stat_date, online_minutes)
+  VALUES (p_driver_id, CURRENT_DATE, p_minutes)
+  ON CONFLICT (driver_id, stat_date) DO UPDATE
+  SET online_minutes = public.driver_daily_stats.online_minutes + p_minutes;
+END;
+$$;
+
+-- Function to submit a rating and update driver average
+CREATE OR REPLACE FUNCTION submit_ride_rating(
+  p_dispatch_id UUID,
+  p_rating INT,
+  p_review TEXT DEFAULT NULL
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_driver_id UUID;
+  v_avg_rating NUMERIC;
+BEGIN
+  -- 1. Update the ride with the rating and review
+  UPDATE public.ride_dispatches
+  SET rider_rating = p_rating, rider_review = p_review
+  WHERE id = p_dispatch_id
+  RETURNING driver_id INTO v_driver_id;
+
+  -- 2. Calculate the new average rating for the driver
+  SELECT ROUND(AVG(rider_rating)::numeric, 1)
+  INTO v_avg_rating
+  FROM public.ride_dispatches
+  WHERE driver_id = v_driver_id AND rider_rating IS NOT NULL;
+
+  -- 3. Update the driver's rating
+  UPDATE public.drivers
+  SET rating = v_avg_rating
+  WHERE id = v_driver_id;
+END;
+$$;
 
 -- Secure Payment Processing
 CREATE OR REPLACE FUNCTION public.process_ride_payment(
@@ -373,6 +431,11 @@ BEGIN
     (6371 * acos(cos(radians(rider_lat)) * cos(radians(d.lat)) * cos(radians(d.lng) - radians(rider_lng)) + sin(radians(rider_lat)) * sin(radians(d.lat)))) AS distance
   FROM public.drivers d JOIN public.profiles p ON d.id = p.id
   WHERE d.status = 'available'
+    AND NOT EXISTS (
+      SELECT 1 FROM public.ride_dispatches rd 
+      WHERE rd.driver_id = d.id 
+      AND rd.status IN ('accepted', 'in_progress', 'emergency')
+    )
     AND (6371 * acos(cos(radians(rider_lat)) * cos(radians(d.lat)) * cos(radians(d.lng) - radians(rider_lng)) + sin(radians(rider_lat)) * sin(radians(d.lat)))) < radius_km
   ORDER BY distance;
 END;

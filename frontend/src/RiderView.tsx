@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Circle, MapPin, Search, Star, CarFront, ArrowUpDown, X, CheckCircle2, IndianRupee } from 'lucide-react';
+import { Circle, MapPin, Search, Star, CarFront, ArrowUpDown, X, CheckCircle2, IndianRupee, Gauge } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { useUserStore } from './store';
 import RiderMap from './RiderMap';
@@ -31,6 +31,7 @@ const RiderView = () => {
   const [walletUsed] = useState(0);
   const [stripeAmount, setStripeAmount] = useState(0);
   const [paymentPaid, setPaymentPaid] = useState(false);
+  const [driverSpeed, setDriverSpeed] = useState<number>(0);
 
   // --- CORE STATES ---
   const [isRestoring, setIsRestoring] = useState(true); // NEW: Prevents UI flicker on refresh
@@ -46,6 +47,12 @@ const RiderView = () => {
 
   const [showSOSModal, setShowSOSModal] = useState(false);
   const [isEmergencyState, setIsEmergencyState] = useState(false);
+  
+  // Rating State
+  const [rating, setRating] = useState<number>(0);
+  const [review, setReview] = useState<string>('');
+  const [ratingSubmitted, setRatingSubmitted] = useState<boolean>(false);
+
   const [showIncomingCall, setShowIncomingCall] = useState(false);
   const [hasAnsweredSOSCall, setHasAnsweredSOSCall] = useState(false);
   const [showOutgoingPoliceCall, setShowOutgoingPoliceCall] = useState(false);
@@ -378,6 +385,9 @@ const RiderView = () => {
           { event: 'UPDATE', schema: 'public', table: 'drivers', filter: `id=eq.${selectedDriver.id}` },
           (payload) => {
             setLiveDriverCoords({ lat: payload.new.lat, lng: payload.new.lng });
+            if (payload.new.speed !== undefined) {
+              setDriverSpeed(payload.new.speed);
+            }
           }
         )
         .subscribe();
@@ -400,6 +410,10 @@ const RiderView = () => {
     setLiveDriverCoords(null);
     setFinalFare(null);
     setPaymentPaid(false);
+    setIsEmergencyState(false);
+    setRating(0);
+    setReview('');
+    setRatingSubmitted(false);
   };
 
   // --- RIDER 12-HOUR LIMIT CHECK ---
@@ -727,6 +741,56 @@ const RiderView = () => {
                         {selectedDriver?.name}
                       </span>
                     </div>
+
+                    {/* RATING SYSTEM */}
+                    <div style={{ marginTop: '24px', textAlign: 'center', paddingTop: '20px', borderTop: '1px solid var(--border-subtle)' }}>
+                       {!ratingSubmitted ? (
+                         <>
+                           <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '12px' }}>Rate Your Trip</h3>
+                           <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '16px' }}>
+                             {[1, 2, 3, 4, 5].map((star) => (
+                               <motion.div 
+                                 key={star} 
+                                 whileHover={{ scale: 1.2 }} 
+                                 whileTap={{ scale: 0.9 }} 
+                                 onClick={() => setRating(star)}
+                                 style={{ cursor: 'pointer' }}
+                               >
+                                 <Star size={32} color={star <= rating ? "#fbbf24" : "var(--border-subtle)"} fill={star <= rating ? "#fbbf24" : "transparent"} />
+                               </motion.div>
+                             ))}
+                           </div>
+
+                           {rating > 0 && (
+                             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                               <textarea 
+                                 placeholder="Leave a comment for the driver (optional)..."
+                                 value={review}
+                                 onChange={(e) => setReview(e.target.value)}
+                                 style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid var(--border-subtle)', backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', minHeight: '80px', resize: 'vertical' }}
+                               />
+                               <button
+                                 onClick={async () => {
+                                   setRatingSubmitted(true);
+                                   if (currentDispatchId) {
+                                     await supabase.rpc('submit_ride_rating', { p_dispatch_id: currentDispatchId, p_rating: rating, p_review: review.trim() || null });
+                                     showToast("Thank you for your feedback!");
+                                   }
+                                 }}
+                                 className="primary-btn"
+                                 style={{ backgroundColor: '#10b981', color: '#fff', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: 'bold', width: '100%' }}
+                               >
+                                 Submit Feedback
+                               </button>
+                             </motion.div>
+                           )}
+                         </>
+                       ) : (
+                         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} style={{ padding: '12px', backgroundColor: '#dcfce7', borderRadius: '12px', color: '#166534', fontWeight: 'bold' }}>
+                            ✓ Thank you for rating!
+                         </motion.div>
+                       )}
+                    </div>
                  </div>
 
                  {/* High-Contrast Reset Button */}
@@ -828,6 +892,17 @@ const RiderView = () => {
           isDarkMode={isDarkMode}
         />
         <div className="map-gradient-overlay" />
+        
+        {/* SPEEDOMETER OVERLAY */}
+        {step >= 4 && step <= 5 && (
+          <div style={{ position: 'absolute', top: '16px', right: '16px', backgroundColor: 'var(--surface)', padding: '12px 16px', borderRadius: '20px', boxShadow: '0 4px 15px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', gap: '8px', zIndex: 10, border: '1px solid var(--border-subtle)' }}>
+            <Gauge size={24} color="#3b82f6" />
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: '20px', fontWeight: '900', lineHeight: '1', color: 'var(--text-main)' }}>{driverSpeed}</span>
+              <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>km/h</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {showPaymentGateway && clientSecret && (
