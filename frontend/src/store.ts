@@ -12,6 +12,7 @@ export interface UserProfile {
   state?: string | null;
   district?: string | null;
   area?: string | null;
+  bio?: string | null;
   avatar_url?: string | null;
   created_at?: string;
   exp?: number;

@@ -114,7 +114,7 @@ export default function OnboardingSurvey() {
       setProfile({
         id: user.id,
         full_name: fullname.trim(),
-        role: role,
+        role: role as 'rider' | 'driver',
         onboarded: true
       });
       setHasProfile(true); 
