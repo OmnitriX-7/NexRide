@@ -19,82 +19,81 @@ interface PaymentGatewayProps {
   onCancel: () => void;
 }
 
-const CheckoutForm = ({ amount, stripeAmount, walletUsed, rideId, clientSecret, type = 'ride', onSuccess, onCancel }: any) => {
+const CheckoutForm = ({ amount, walletUsed, rideId, clientSecret, type = 'ride', onSuccess, onCancel }: any) => {
   const stripe = useStripe();
   const elements = useElements();
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash'>('card');
+  const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash' | 'wallet'>('card');
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+
+  React.useEffect(() => {
+    // Fetch current wallet balance
+    const fetchBalance = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase.from('profiles').select('wallet_balance').eq('id', user.id).single();
+        if (data) setWalletBalance(data.wallet_balance);
+      }
+    };
+    fetchBalance();
+  }, []);
   
-  const handleCashPayment = async () => {
-    setProcessing(true);
-    try {
-      // Mark as paid in DB directly for cash
-      const { error: dbError } = await supabase
-        .from('ride_dispatches')
-        .update({ payment_status: 'paid', payment_method: 'cash' })
-        .eq('id', rideId);
-      
-      if (dbError) throw dbError;
-      onSuccess();
-    } catch (err: any) {
-      setError(err.message);
-      setProcessing(false);
-    }
-  };
+
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (paymentMethod === 'cash') {
-      return handleCashPayment();
-    }
 
     const updateDatabase = async (method: string) => {
       if (type === 'subscription') {
-        // Only update premium flag, no ride dispatch
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          // Set expiry 30 days from now
-          const expiresAt = new Date();
-          expiresAt.setDate(expiresAt.getDate() + 30);
-          await supabase.from('profiles').update({ 
-            is_premium: true, 
-            premium_expires_at: expiresAt.toISOString() 
-          }).eq('id', user.id);
-        }
+        // Securely call RPC to subscribe
+        await supabase.rpc('subscribe_premium');
         onSuccess();
         return;
       }
 
-      // 1. Mark ride as paid
-      const { error: dbError } = await supabase
-        .from('ride_dispatches')
-        .update({ payment_status: 'paid', payment_method: method })
-        .eq('id', rideId);
+      // 1. Mark ride as paid and deduct wallet securely using RPC
+      const { error: rpcError } = await supabase.rpc('process_ride_payment', {
+        p_ride_id: rideId,
+        p_wallet_used: walletUsed || 0,
+        p_method: method
+      });
       
-      if (dbError) {
-        setError("Payment succeeded but database update failed.");
+      if (rpcError) {
+        setError("Payment succeeded but database update failed: " + rpcError.message);
         setProcessing(false);
         return;
-      }
-      
-      // 2. Deduct wallet balance if used
-      if (walletUsed > 0) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: profile } = await supabase.from('profiles').select('wallet_balance').eq('id', user.id).single();
-          if (profile) {
-            await supabase.from('profiles').update({ wallet_balance: Math.max(0, profile.wallet_balance - walletUsed) }).eq('id', user.id);
-          }
-        }
       }
       
       onSuccess();
     };
 
-    if (clientSecret === 'wallet_only') {
-      await updateDatabase('wallet');
+    if (paymentMethod === 'cash') {
+      setProcessing(true);
+      await updateDatabase('cash');
+      return;
+    }
+
+    if (paymentMethod === 'wallet') {
+      if (walletBalance === null || walletBalance < amount) {
+        setError("Insufficient wallet balance");
+        return;
+      }
+      setProcessing(true);
+      // Directly mark as paid and deduct from db
+      const { error: dbError } = await supabase
+        .from('ride_dispatches')
+        .update({ payment_status: 'paid', payment_method: 'wallet' })
+        .eq('id', rideId);
+      
+      if (!dbError) {
+        await supabase.from('profiles').update({ wallet_balance: walletBalance - amount }).eq('id', (await supabase.auth.getUser()).data.user?.id);
+        onSuccess();
+      } else {
+        setError("Failed to process wallet payment");
+        setProcessing(false);
+      }
       return;
     }
 
@@ -133,32 +132,53 @@ const CheckoutForm = ({ amount, stripeAmount, walletUsed, rideId, clientSecret, 
           onClick={() => setPaymentMethod('card')}
           style={paymentMethod === 'card' ? activeTabStyle : tabStyle}
         >
-          <CreditCard size={18} /> Online / Card
+          <CreditCard size={18} /> Card
+        </button>
+        <button 
+          type="button"
+          onClick={() => setPaymentMethod('wallet')}
+          style={paymentMethod === 'wallet' ? activeTabStyle : tabStyle}
+        >
+          <ShieldCheck size={18} /> Wallet
         </button>
         <button 
           type="button"
           onClick={() => setPaymentMethod('cash')}
           style={paymentMethod === 'cash' ? activeTabStyle : tabStyle}
         >
-          <DollarSign size={18} /> Pay Cash
+          <DollarSign size={18} /> Cash
         </button>
       </div>
 
-      {paymentMethod === 'card' ? (
+      {paymentMethod === 'card' && (
         <div style={stripeContainerStyle}>
-          {clientSecret === 'wallet_only' ? (
-            <div style={cashInfoStyle}>
-              <h3>Free Ride!</h3>
-              <p>Your wallet balance covers the entire cost of this ride.</p>
-            </div>
-          ) : (
-            <PaymentElement options={{ layout: 'tabs' }} />
-          )}
+          <PaymentElement options={{ layout: 'tabs' }} />
         </div>
-      ) : (
+      )}
+      
+      {paymentMethod === 'cash' && (
         <div style={cashInfoStyle}>
           <h3>Pay Driver Directly</h3>
-          <p>Please pay the driver <b>₹{stripeAmount?.toFixed(2)}</b> in cash at the end of your trip.</p>
+          <p>Please pay the driver <b>₹{amount?.toFixed(2)}</b> in cash at the end of your trip.</p>
+        </div>
+      )}
+
+      {paymentMethod === 'wallet' && (
+        <div style={cashInfoStyle}>
+          <h3>NexRide Wallet</h3>
+          {walletBalance !== null ? (
+            walletBalance >= amount ? (
+              <p style={{ color: '#16a34a', fontWeight: '600' }}>
+                You have ₹{walletBalance.toFixed(2)} available. This covers the full fare of ₹{amount?.toFixed(2)}.
+              </p>
+            ) : (
+              <p style={{ color: '#ef4444', fontWeight: '600' }}>
+                Insufficient Balance. You have ₹{walletBalance.toFixed(2)} but need ₹{amount?.toFixed(2)}. Please choose another payment method.
+              </p>
+            )
+          ) : (
+            <p>Loading balance...</p>
+          )}
         </div>
       )}
 
@@ -175,8 +195,71 @@ const CheckoutForm = ({ amount, stripeAmount, walletUsed, rideId, clientSecret, 
           <button type="button" onClick={onCancel} style={cancelBtnStyle} disabled={processing}>
             Cancel
           </button>
-          <button type="submit" style={payBtnStyle} disabled={processing || (!stripe && paymentMethod === 'card' && clientSecret !== 'wallet_only')}>
-            {processing ? 'Processing...' : `Pay ₹${(paymentMethod === 'card' ? stripeAmount : amount)?.toFixed(2)}`}
+          <button type="submit" style={payBtnStyle} disabled={processing || (!stripe && paymentMethod === 'card' && clientSecret !== 'wallet_only') || (paymentMethod === 'wallet' && (walletBalance === null || walletBalance < amount))}>
+            {processing ? 'Processing...' : `Pay ₹${amount?.toFixed(2)}`}
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+};
+
+const WalletOnlyCheckoutForm = ({ walletUsed, rideId, onSuccess, onCancel }: any) => {
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleWalletPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProcessing(true);
+    
+    // 1. Mark ride as paid
+    const { error: dbError } = await supabase
+      .from('ride_dispatches')
+      .update({ payment_status: 'paid', payment_method: 'wallet' })
+      .eq('id', rideId);
+    
+    if (dbError) {
+      setError("Payment succeeded but database update failed.");
+      setProcessing(false);
+      return;
+    }
+    
+    // 2. Deduct wallet balance if used
+    if (walletUsed > 0) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase.from('profiles').select('wallet_balance').eq('id', user.id).single();
+        if (profile) {
+          await supabase.from('profiles').update({ wallet_balance: Math.max(0, profile.wallet_balance - walletUsed) }).eq('id', user.id);
+        }
+      }
+    }
+    
+    onSuccess();
+  };
+
+  return (
+    <form onSubmit={handleWalletPayment} style={formStyle}>
+      <div style={cashInfoStyle}>
+        <h3>Free Ride!</h3>
+        <p>Your wallet balance covers the entire cost of this ride.</p>
+      </div>
+
+      {error && <div style={errorStyle}>{error}</div>}
+
+      <div style={footerStyle}>
+        <div style={secureBadgeStyle}>
+          <ShieldCheck size={14} color="#16a34a" /> 
+          <Lock size={14} color="#16a34a" />
+          <span>256-bit Secure Encryption</span>
+        </div>
+        
+        <div style={actionButtonsStyle}>
+          <button type="button" onClick={onCancel} style={cancelBtnStyle} disabled={processing}>
+            Cancel
+          </button>
+          <button type="submit" style={payBtnStyle} disabled={processing}>
+            {processing ? 'Processing...' : 'Confirm Free Ride'}
           </button>
         </div>
       </div>
@@ -216,16 +299,10 @@ export const PaymentGateway = ({ clientSecret, amount, stripeAmount, walletUsed,
                   <span>Base Fare:</span>
                   <span>₹{amount.toFixed(2)}</span>
                 </div>
-                {amount - (stripeAmount || 0) - (walletUsed || 0) > 0 && (
+                {amount - (stripeAmount || 0) > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: '#16a34a' }}>
                     <span>Elite Discount:</span>
-                    <span>-₹{(amount - (stripeAmount || 0) - (walletUsed || 0)).toFixed(2)}</span>
-                  </div>
-                )}
-                {walletUsed! > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: '#2563eb' }}>
-                    <span>Wallet Applied:</span>
-                    <span>-₹{walletUsed!.toFixed(2)}</span>
+                    <span>-₹{(amount - (stripeAmount || 0)).toFixed(2)}</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', borderTop: '1px solid #e2e8f0', paddingTop: '8px', marginTop: '8px' }}>
@@ -239,7 +316,7 @@ export const PaymentGateway = ({ clientSecret, amount, stripeAmount, walletUsed,
 
         {clientSecret ? (
           isWalletOnly ? (
-            <CheckoutForm amount={amount} stripeAmount={stripeAmount} walletUsed={walletUsed} rideId={rideId} clientSecret={clientSecret} type={type} onSuccess={onSuccess} onCancel={onCancel} />
+            <WalletOnlyCheckoutForm walletUsed={walletUsed} rideId={rideId} onSuccess={onSuccess} onCancel={onCancel} />
           ) : (
             <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'stripe' } }}>
               <CheckoutForm amount={amount} stripeAmount={stripeAmount} walletUsed={walletUsed} rideId={rideId} clientSecret={clientSecret} type={type} onSuccess={onSuccess} onCancel={onCancel} />
@@ -263,7 +340,7 @@ const overlayStyle: React.CSSProperties = {
 };
 const modalStyle: React.CSSProperties = {
   backgroundColor: 'white', width: '90%', maxWidth: '500px',
-  borderRadius: '24px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)'
+  borderRadius: '24px', overflowY: 'auto', maxHeight: '90vh', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)'
 };
 const headerStyle: React.CSSProperties = {
   backgroundColor: '#f8fafc', padding: '24px', borderBottom: '1px solid #e2e8f0', textAlign: 'center'

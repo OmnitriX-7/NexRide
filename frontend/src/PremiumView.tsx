@@ -18,10 +18,14 @@ const PremiumView = () => {
     setIsLoading(true);
     
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch('http://localhost:4242/create-payment-intent', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: 499 })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({ type: 'subscription' })
       });
       const data = await res.json();
       if (data.clientSecret) {
@@ -52,28 +56,14 @@ const PremiumView = () => {
     if (!profile?.id || (profile.wallet_balance || 0) < 499) return;
     setWalletLoading(true);
     try {
-      // 1. Deduct wallet balance
-      const newBalance = (profile.wallet_balance || 0) - 499;
-      
-      // 2. Set expiry date (30 days from now)
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 30);
-      
-      const { error } = await supabase.from('profiles').update({
-        wallet_balance: newBalance,
-        is_premium: true,
-        premium_expires_at: expiresAt.toISOString()
-      }).eq('id', profile.id);
+      // 1. Call secure RPC to deduct wallet and subscribe
+      const { error } = await supabase.rpc('subscribe_premium');
       
       if (error) throw error;
-      
-      // Update local state
-      setProfile({
-        ...profile,
-        wallet_balance: newBalance,
-        is_premium: true,
-        premium_expires_at: expiresAt.toISOString()
-      });
+      const { data } = await supabase.from('profiles').select('*').eq('id', profile!.id).single();
+      if (data) {
+        setProfile(data);
+      }
       showToast('Welcome to NexRide Elite! 🎉');
     } catch (err) {
       showToast('Error processing wallet payment.');

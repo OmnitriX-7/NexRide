@@ -15,8 +15,11 @@ interface ProfileFormData {
   phone_number: string;
   age: string | number;
   gender: string;
-  hometown: string;
+  state: string;
+  district: string;
+  area: string;
   bio: string;
+  emergency_contact_phone: string;
 }
 
 const ProfileDashboard = () => {
@@ -33,8 +36,11 @@ const ProfileDashboard = () => {
     phone_number: profile?.phone_number || '',
     age: profile?.age || '',
     gender: profile?.gender || '',
-    hometown: profile?.hometown || '',
+    state: profile?.state || '',
+    district: profile?.district || '',
+    area: profile?.area || '',
     bio: profile?.bio || '',
+    emergency_contact_phone: profile?.emergency_contact_phone || '',
   });
 
   const [driverStats, setDriverStats] = useState<any>(null);
@@ -45,10 +51,13 @@ const ProfileDashboard = () => {
       setFormData({
         full_name: profile.full_name || '',
         phone_number: profile.phone_number || '',
-        age: profile.age || '',
+        age: profile.age?.toString() || '',
         gender: profile.gender || '',
-        hometown: profile.hometown || '',
+        state: profile.state || '',
+        district: profile.district || '',
+        area: profile.area || '',
         bio: profile.bio || '',
+        emergency_contact_phone: profile.emergency_contact_phone || '',
       });
     }
   }, [profile, isEditing]);
@@ -105,8 +114,11 @@ const ProfileDashboard = () => {
       phone_number: formData.phone_number,
       age: ageValue,
       gender: formData.gender,
-      hometown: formData.hometown,
+      state: formData.state,
+      district: formData.district,
+      area: formData.area,
       bio: formData.bio,
+      emergency_contact_phone: formData.emergency_contact_phone,
     };
 
     const { error } = await supabase
@@ -322,10 +334,31 @@ const ProfileDashboard = () => {
               />
               <InfoField 
                 icon={<MapPin size={18} />} 
-                label="Hometown" 
-                value={formData.hometown} 
+                label="State" 
+                value={formData.state} 
                 isEditing={isEditing} 
-                onChange={(val: string) => setFormData({...formData, hometown: val})} 
+                onChange={(val: string) => setFormData({...formData, state: val})} 
+              />
+              <InfoField 
+                icon={<MapPin size={18} />} 
+                label="District / City" 
+                value={formData.district} 
+                isEditing={isEditing} 
+                onChange={(val: string) => setFormData({...formData, district: val})} 
+              />
+              <InfoField 
+                icon={<MapPin size={18} />} 
+                label="Area / House No." 
+                value={formData.area} 
+                isEditing={isEditing} 
+                onChange={(val: string) => setFormData({...formData, area: val})} 
+              />
+              <InfoField 
+                icon={<Phone size={18} color="#ef4444" />} 
+                label="Emergency Contact" 
+                value={formData.emergency_contact_phone} 
+                isEditing={isEditing} 
+                onChange={(val: string) => setFormData({...formData, emergency_contact_phone: val})} 
               />
             </div>
             

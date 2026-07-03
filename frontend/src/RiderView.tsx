@@ -5,6 +5,9 @@ import { supabase } from './supabaseClient';
 import { useUserStore } from './store';
 import RiderMap from './RiderMap';
 import { PaymentGateway } from './PaymentGateway';
+import SOSModal from './SOSModal'; // Added SOSModal
+import IncomingCallModal from './IncomingCallModal';
+import OutgoingCallModal from './OutgoingCallModal';
 import './RiderView.css'; 
 
 const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -25,7 +28,7 @@ const RiderView = () => {
   // Payment State
   const [showPaymentGateway, setShowPaymentGateway] = useState(false);
   const [clientSecret, setClientSecret] = useState('');
-  const [walletUsed, setWalletUsed] = useState(0);
+  const [walletUsed] = useState(0);
   const [stripeAmount, setStripeAmount] = useState(0);
   const [paymentPaid, setPaymentPaid] = useState(false);
 
@@ -41,6 +44,12 @@ const RiderView = () => {
   const [liveDriverCoords, setLiveDriverCoords] = useState<{lat: number; lng: number} | null>(null);
   const [finalFare, setFinalFare] = useState<number | null>(null);
 
+  const [showSOSModal, setShowSOSModal] = useState(false);
+  const [isEmergencyState, setIsEmergencyState] = useState(false);
+  const [showIncomingCall, setShowIncomingCall] = useState(false);
+  const [hasAnsweredSOSCall, setHasAnsweredSOSCall] = useState(false);
+  const [showOutgoingPoliceCall, setShowOutgoingPoliceCall] = useState(false);
+
   // --- LOCATION STATES ---
   const [pickup, setPickup] = useState('');
   const [destination, setDestination] = useState('');
@@ -51,6 +60,24 @@ const RiderView = () => {
   const [pickupSuggestions, setPickupSuggestions] = useState<any[]>([]);
   const [destSuggestions, setDestSuggestions] = useState<any[]>([]);
   const [activeField, setActiveField] = useState<'pickup' | 'destination' | null>(null);
+
+  const handleUseCurrentLocation = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setPickupLat(pos.coords.latitude);
+          setPickupLng(pos.coords.longitude);
+          setPickup('My Current Location');
+          setActiveField(null);
+          showToast('Current location selected!');
+        },
+        () => showToast("Failed to get current location")
+      );
+    } else {
+      showToast("Geolocation not supported by browser");
+    }
+  };
 
   // --- SORTING STATES ---
   const [sortBy, setSortBy] = useState<'distance' | 'fare' | 'rating'>('distance');
@@ -88,10 +115,11 @@ const RiderView = () => {
         .from('ride_dispatches')
         .select('*, driver:drivers(*)')
         .eq('rider_id', user.id)
-        .in('status', ['pending', 'accepted'])
+        .order('created_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
-      if (data) {
+      if (data && ['pending', 'accepted', 'in_progress', 'emergency'].includes(data.status)) {
         setCurrentDispatchId(data.id);
         setSelectedDriver(data.driver);
         setPickup(data.pickup_name);
@@ -108,6 +136,7 @@ const RiderView = () => {
 
         if (data.status === 'pending') setStep(3);
         if (data.status === 'accepted') setStep(4);
+        if (data.status === 'in_progress' || data.status === 'emergency') setStep(5);
       } else {
         // Clean up if no active ride
         localStorage.removeItem('active_ride_id');
@@ -299,6 +328,9 @@ const RiderView = () => {
             const newStatus = payload.new.status;
             const paymentStatus = payload.new.payment_status;
 
+            if (newStatus === 'emergency') setIsEmergencyState(true);
+            else if (isEmergencyState) setIsEmergencyState(false);
+
             if (paymentStatus === 'paid') {
               setPaymentPaid(true);
               setShowPaymentGateway(false);
@@ -313,7 +345,7 @@ const RiderView = () => {
               setCurrentDispatchId(null);
               localStorage.removeItem('active_ride_id');
             } else if (newStatus === 'completed') {
-              setStep(5);
+              setStep(6);
               localStorage.removeItem('active_ride_id'); // Ride is over, wipe memory
 
               // Re-fetch profile to sync XP and Level updates from the database
@@ -324,9 +356,8 @@ const RiderView = () => {
                 }
               });
             } else if (newStatus === 'cancelled' || newStatus === 'timeout') {
-              setStep(1);
-              setCurrentDispatchId(null);
-              localStorage.removeItem('active_ride_id');
+              resetRiderUI();
+              showToast("Ride was cancelled or timed out.");
             }
           }
         }
@@ -371,35 +402,60 @@ const RiderView = () => {
     setPaymentPaid(false);
   };
 
+  // --- RIDER 12-HOUR LIMIT CHECK ---
+  useEffect(() => {
+    let interval: any;
+    if ((step === 5 || step === 4) && currentDispatchId) {
+      const fetchAndCheckTime = async () => {
+        const { data } = await supabase.from('ride_dispatches').select('created_at').eq('id', currentDispatchId).maybeSingle();
+        if (data?.created_at) {
+          let timeStr = data.created_at;
+          if (!timeStr.endsWith('Z') && !timeStr.includes('+')) {
+            timeStr += 'Z';
+          }
+          const createdAt = new Date(timeStr).getTime();
+          const now = Date.now();
+          const diffHours = (now - createdAt) / (1000 * 60 * 60);
+          if (diffHours > 12 && !showIncomingCall && !hasAnsweredSOSCall) {
+            setShowIncomingCall(true);
+          }
+        }
+      };
+      fetchAndCheckTime();
+      interval = setInterval(fetchAndCheckTime, 60000);
+    }
+    return () => clearInterval(interval);
+  }, [step, currentDispatchId, showIncomingCall, hasAnsweredSOSCall]);
+
   const handlePayNow = async () => {
     if (!finalFare || !currentDispatchId) return;
     
     let discountedFare = finalFare;
     if (profile?.is_premium) discountedFare = finalFare * 0.9;
     
-    let wUsed = 0;
-    let sAmount = discountedFare;
-    const walletBalance = profile?.wallet_balance || 0;
+    // Always generate Stripe intent for the full fare; user selects method in Gateway
+    setStripeAmount(discountedFare);
     
-    if (walletBalance > 0) {
-      wUsed = Math.min(discountedFare, walletBalance);
-      sAmount = discountedFare - wUsed;
-    }
-    
-    setWalletUsed(wUsed);
-    setStripeAmount(sAmount);
-    
-    if (sAmount <= 0) {
-      setClientSecret('wallet_only');
+    if (discountedFare <= 0) {
+      setClientSecret('wallet_only'); // or free
       setShowPaymentGateway(true);
       return;
     }
     
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
       const res = await fetch('http://localhost:4242/create-payment-intent', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: sAmount })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
+        body: JSON.stringify({ 
+          ride_id: currentDispatchId, 
+          wallet_used: walletUsed,
+          type: 'ride'
+        })
       });
       const data = await res.json();
       if (data.clientSecret) {
@@ -465,9 +521,15 @@ const RiderView = () => {
                   <p>Select your location for NexRide</p>
                 </div>
                 <div className="form-group">
-                  <div className="input-wrapper">
+                  <div className="input-wrapper" style={{ display: 'flex', alignItems: 'center' }}>
                     <Circle className="input-icon" size={10} strokeWidth={3} />
-                    <input id="pickup-input" name="pickup" placeholder="Pick up Location" value={pickup} onFocus={() => setActiveField('pickup')} onChange={(e) => setPickup(e.target.value)} className="location-input" />
+                    <input id="pickup-input" name="pickup" placeholder="Pick up Location" value={pickup} onFocus={() => setActiveField('pickup')} onChange={(e) => setPickup(e.target.value)} className="location-input" style={{ flex: 1 }} />
+                    <button 
+                      onClick={handleUseCurrentLocation}
+                      style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '12px', padding: '0 8px', fontWeight: 'bold' }}
+                    >
+                      Use Current
+                    </button>
                   </div>
                   {activeField === 'pickup' && pickupSuggestions.length > 0 && (
                     <div className="suggestions-dropdown">
@@ -576,29 +638,62 @@ const RiderView = () => {
               </motion.div>
             )}
 
-            {/* STEP 4: RIDE IN PROGRESS */}
+            {/* STEP 4: DRIVER ACCEPTED (HEADING TO PICKUP) */}
             {step === 4 && (
               <motion.div key="accepted" initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="panel-card status-panel">
                 <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring' }} className="success-icon-wrapper">
                   <CheckCircle2 size={40} className="success-icon" />
                 </motion.div>
-                <h2>Ride in Progress</h2>
-                <p><b>{selectedDriver?.name}</b> is heading to <b>{destination}</b>.</p>
+                <h2>Driver is on the way!</h2>
+                <p><b>{selectedDriver?.name}</b> is heading to pick you up at <b>{pickup}</b>.</p>
                 
-                {!paymentPaid ? (
-                  <button onClick={handlePayNow} className="primary-btn" style={{ marginTop: '16px', backgroundColor: '#2563eb' }}>
-                    Pay Now (₹{finalFare})
+                <div style={{ display: 'flex', gap: '8px', marginTop: '16px', justifyContent: 'center' }}>
+                  {!paymentPaid ? (
+                    <button onClick={handlePayNow} className="primary-btn" style={{ backgroundColor: '#2563eb', flex: 1 }}>
+                      Pay Now (₹{finalFare})
+                    </button>
+                  ) : (
+                    <div style={{ padding: '12px', backgroundColor: '#dcfce7', color: '#166534', borderRadius: '12px', fontWeight: 'bold', flex: 1 }}>
+                      Payment Completed ✓
+                    </div>
+                  )}
+                  <button 
+                    onClick={() => setShowSOSModal(true)}
+                    style={{ padding: '10px 20px', backgroundColor: '#fef2f2', color: '#ef4444', borderRadius: '12px', fontWeight: '800', border: '1px solid #fecaca', cursor: 'pointer' }}
+                  >
+                    SOS
                   </button>
-                ) : (
-                  <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#dcfce7', color: '#166534', borderRadius: '12px', fontWeight: 'bold' }}>
-                    Payment Completed ✓
-                  </div>
-                )}
+                </div>
               </motion.div>
             )}
 
-            {/* STEP 5: TRIP COMPLETED & RECEIPT */}
-            {step === 5 && (
+            {/* STEP 5: RIDE IN PROGRESS */}
+            {step === 5 && !isEmergencyState && (
+              <motion.div key="in_progress" initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="panel-card status-panel">
+                 <motion.div initial={{ y: -10 }} animate={{ y: 0 }} style={{ marginBottom: '1rem' }}>
+                    <CarFront size={50} color="#2563eb" />
+                 </motion.div>
+                 <h2 style={{ fontSize: '24px', fontWeight: '900' }}>Ride in Progress</h2>
+                 <p style={{ color: 'var(--text-secondary)' }}>You're currently in a ride with <b>{selectedDriver?.name}</b>.</p>
+                 
+                 <div style={{ display: 'flex', gap: '8px', marginTop: '16px', justifyContent: 'center' }}>
+                    <button 
+                      onClick={() => setShowSOSModal(true)}
+                      style={{ padding: '10px 20px', backgroundColor: '#fef2f2', color: '#ef4444', borderRadius: '12px', fontWeight: '800', border: '1px solid #fecaca', cursor: 'pointer' }}
+                    >
+                      SOS
+                    </button>
+                 </div>
+              </motion.div>
+            )}
+            
+            {step === 5 && isEmergencyState && (
+               /* Emergency state UI handled by overlay below */
+               <div />
+            )}
+
+            {/* STEP 6: TRIP COMPLETED & RECEIPT */}
+            {step === 6 && (
               <motion.div key="finished" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="panel-card status-panel">
                  <motion.div initial={{ y: -20 }} animate={{ y: 0 }} style={{ marginBottom: '1.5rem' }}>
                     <CheckCircle2 size={60} color="#10b981" />
@@ -647,6 +742,82 @@ const RiderView = () => {
           </AnimatePresence>
         )}
       </div>
+      
+      {/* EMERGENCY STATE OVERLAY */}
+      <AnimatePresence>
+        {isEmergencyState && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: 'rgba(239, 68, 68, 0.95)',
+              zIndex: 3000, display: 'flex', flexDirection: 'column',
+              justifyContent: 'center', alignItems: 'center', padding: '24px',
+              color: 'white', textAlign: 'center', backdropFilter: 'blur(10px)'
+            }}
+          >
+            <motion.div
+              animate={{ scale: [1, 1.1, 1] }}
+              transition={{ repeat: Infinity, duration: 1.5 }}
+              style={{ width: '80px', height: '80px', backgroundColor: 'white', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '24px' }}
+            >
+              <Search size={40} color="#ef4444" />
+            </motion.div>
+            <h1 style={{ fontSize: '32px', fontWeight: '800', marginBottom: '16px' }}>EMERGENCY SOS</h1>
+            <p style={{ fontSize: '18px', opacity: 0.9, marginBottom: '40px', maxWidth: '300px' }}>Your ride has been flagged. Help is a tap away.</p>
+            <button 
+              onClick={() => setShowOutgoingPoliceCall(true)}
+              style={{ width: '100%', padding: '20px', borderRadius: '16px', backgroundColor: 'white', color: '#ef4444', fontSize: '20px', fontWeight: '800', border: 'none', marginBottom: '16px', cursor: 'pointer', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}
+            >
+              CALL POLICE (911)
+            </button>
+            {profile?.emergency_contact_phone && (
+              <a href={`tel:${profile.emergency_contact_phone}`} style={{ textDecoration: 'none', width: '100%', maxWidth: '300px' }}>
+                <button style={{ width: '100%', padding: '20px', borderRadius: '16px', backgroundColor: 'rgba(255,255,255,0.2)', color: 'white', fontSize: '18px', fontWeight: '700', border: '2px solid white', marginBottom: '40px', cursor: 'pointer' }}>
+                  CALL EMERGENCY CONTACT
+                </button>
+              </a>
+            )}
+            <button 
+              onClick={async () => {
+                if(currentDispatchId) {
+                  await supabase.from('ride_dispatches').update({ status: 'in_progress' }).eq('id', currentDispatchId);
+                  setIsEmergencyState(false);
+                }
+              }}
+              style={{ padding: '16px 32px', borderRadius: '30px', backgroundColor: 'transparent', color: 'white', fontSize: '16px', fontWeight: '600', border: '1px solid rgba(255,255,255,0.4)', cursor: 'pointer' }}
+            >
+              Mark as Safe / Cancel SOS
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {showSOSModal && (
+        <SOSModal 
+          onClose={() => setShowSOSModal(false)}
+          onConfirm={async () => {
+            setShowSOSModal(false);
+            if (currentDispatchId) {
+              await supabase.from('ride_dispatches').update({ status: 'emergency' }).eq('id', currentDispatchId);
+              setIsEmergencyState(true);
+            }
+          }}
+        />
+      )}
+
+      {showIncomingCall && (
+        <IncomingCallModal onClose={(accepted) => {
+          setShowIncomingCall(false);
+          if (accepted) setHasAnsweredSOSCall(true);
+        }} />
+      )}
+      
+      {showOutgoingPoliceCall && (
+        <OutgoingCallModal onClose={() => setShowOutgoingPoliceCall(false)} />
+      )}
       
       {/* MAP BACKGROUND */}
       <div className="map-layer">

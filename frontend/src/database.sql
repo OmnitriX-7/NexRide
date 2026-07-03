@@ -11,7 +11,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   onboarded boolean DEFAULT false,
   age int4 CHECK (age >= 0),
   gender text,
-  hometown text,
+  state text,
+  district text,
+  area text,
   bio text,
   avatar_url text,
   exp int4 DEFAULT 0,
@@ -23,13 +25,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS public.coupons (
-  code TEXT PRIMARY KEY,
-  discount_percentage INT NOT NULL,
-  valid_until TIMESTAMP WITH TIME ZONE,
-  max_uses INT DEFAULT 1,
-  times_used INT DEFAULT 0
-);
+
 
 CREATE TABLE IF NOT EXISTS public.app_feedback (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -41,7 +37,9 @@ CREATE TABLE IF NOT EXISTS public.app_feedback (
 
 -- RLS for app_feedback
 ALTER TABLE public.app_feedback ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can insert their own feedback" ON public.app_feedback;
 CREATE POLICY "Users can insert their own feedback" ON public.app_feedback FOR INSERT WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can view their own feedback" ON public.app_feedback;
 CREATE POLICY "Users can view their own feedback" ON public.app_feedback FOR SELECT USING (auth.uid() = user_id);
 
 CREATE TABLE IF NOT EXISTS public.drivers (
@@ -79,7 +77,7 @@ CREATE TABLE IF NOT EXISTS public.ride_dispatches (
   dest_lat DOUBLE PRECISION,
   dest_lng DOUBLE PRECISION,
   fare_amount DECIMAL(10,2) NOT NULL,
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'timeout', 'cancelled', 'completed')),
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'in_progress', 'emergency', 'rejected', 'timeout', 'cancelled', 'completed')),
   payment_status TEXT DEFAULT 'pending' CHECK (payment_status IN ('pending', 'paid')),
   payment_method TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
@@ -92,6 +90,12 @@ CREATE TABLE IF NOT EXISTS public.ride_dispatches (
 ALTER TABLE public.ride_dispatches REPLICA IDENTITY FULL;
 ALTER TABLE public.drivers REPLICA IDENTITY FULL;
 ALTER TABLE public.coupons REPLICA IDENTITY FULL;
+
+-- Explicitly update constraints in case the table already existed
+ALTER TABLE public.ride_dispatches DROP CONSTRAINT IF EXISTS ride_dispatches_status_check;
+ALTER TABLE public.ride_dispatches ADD CONSTRAINT ride_dispatches_status_check CHECK (status IN ('pending', 'accepted', 'in_progress', 'emergency', 'rejected', 'timeout', 'cancelled', 'completed'));
+ALTER TABLE public.ride_dispatches DROP CONSTRAINT IF EXISTS ride_dispatches_payment_status_check;
+ALTER TABLE public.ride_dispatches ADD CONSTRAINT ride_dispatches_payment_status_check CHECK (payment_status IN ('pending', 'paid'));
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.drivers ENABLE ROW LEVEL SECURITY;
@@ -112,6 +116,95 @@ DROP POLICY IF EXISTS "Anyone view drivers" ON public.drivers;
 CREATE POLICY "Anyone view drivers" ON public.drivers FOR SELECT USING (true);
 DROP POLICY IF EXISTS "Drivers update self" ON public.drivers;
 CREATE POLICY "Drivers update self" ON public.drivers FOR UPDATE USING (auth.uid() = id);
+
+-- Explicitly add new columns to existing table
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS state text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS district text;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS area text;
+
+-- ==========================================
+-- 2.5 TRIGGERS FOR SECURITY
+-- ==========================================
+CREATE OR REPLACE FUNCTION public.protect_sensitive_profile_fields()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  -- Prevent non-service-role users from manipulating sensitive fields
+  -- unless explicitly bypassed by a secure RPC
+  IF auth.uid() IS NOT NULL AND current_setting('my.bypass_trigger', true) IS DISTINCT FROM 'true' THEN
+    NEW.wallet_balance = OLD.wallet_balance;
+    NEW.exp = OLD.exp;
+    NEW.level = OLD.level;
+    NEW.is_premium = OLD.is_premium;
+    NEW.premium_expires_at = OLD.premium_expires_at;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_protect_profile_fields ON public.profiles;
+CREATE TRIGGER trg_protect_profile_fields
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION public.protect_sensitive_profile_fields();
+
+CREATE OR REPLACE FUNCTION public.protect_dispatch_fields()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  IF auth.uid() IS NOT NULL AND current_setting('my.bypass_trigger', true) IS DISTINCT FROM 'true' THEN
+    -- Once a ride is created, riders/drivers cannot change the fare or endpoints
+    NEW.fare_amount = OLD.fare_amount;
+    NEW.pickup_lat = OLD.pickup_lat;
+    NEW.pickup_lng = OLD.pickup_lng;
+    NEW.dest_lat = OLD.dest_lat;
+    NEW.dest_lng = OLD.dest_lng;
+    
+    -- Prevent driver spoofing: Riders cannot change driver_id. Drivers can only set themselves as driver.
+    IF auth.uid() = OLD.rider_id THEN
+       NEW.driver_id = OLD.driver_id;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_protect_dispatch_fields ON public.ride_dispatches;
+CREATE TRIGGER trg_protect_dispatch_fields
+  BEFORE UPDATE ON public.ride_dispatches
+  FOR EACH ROW
+  EXECUTE FUNCTION public.protect_dispatch_fields();
+
+CREATE OR REPLACE FUNCTION public.prevent_concurrent_rides()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  active_count INT;
+BEGIN
+  SELECT COUNT(*) INTO active_count 
+  FROM public.ride_dispatches 
+  WHERE rider_id = NEW.rider_id 
+  AND status IN ('pending', 'accepted', 'in_progress', 'emergency');
+  
+  IF active_count > 0 THEN
+    RAISE EXCEPTION 'Rider already has an active ride request.';
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_prevent_concurrent_rides ON public.ride_dispatches;
+CREATE TRIGGER trg_prevent_concurrent_rides
+  BEFORE INSERT ON public.ride_dispatches
+  FOR EACH ROW
+  EXECUTE FUNCTION public.prevent_concurrent_rides();
 
 -- Coupon Policies
 -- ADDED: Ensure users can only see their own coupons
@@ -147,28 +240,107 @@ WITH CHECK (bucket_id = 'avatars' AND (storage.foldername(name))[1] = auth.uid()
 -- 4. PROCEDURAL FUNCTIONS (RPCs)
 -- ==========================================
 
--- Onboarding Part 1: Save Basic Info
-CREATE OR REPLACE FUNCTION public.save_basic_profile(user_full_name TEXT, user_phone TEXT, user_role TEXT) 
+-- Secure Payment Processing
+CREATE OR REPLACE FUNCTION public.process_ride_payment(
+  p_ride_id UUID, 
+  p_wallet_used DECIMAL,
+  p_method TEXT
+)
 RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+  v_fare DECIMAL;
+  v_rider UUID;
+  v_wallet DECIMAL;
 BEGIN
-    UPDATE public.profiles 
-    SET full_name = user_full_name, phone_number = user_phone, role = user_role, onboarded = (CASE WHEN user_role = 'rider' THEN true ELSE false END)
-    WHERE id = auth.uid();
-    RETURN json_build_object('status', 'success', 'role', user_role);
+  -- Get ride details
+  SELECT fare_amount, rider_id INTO v_fare, v_rider 
+  FROM public.ride_dispatches 
+  WHERE id = p_ride_id;
+  
+  IF v_rider != auth.uid() THEN
+    RAISE EXCEPTION 'Not authorized to pay for this ride.';
+  END IF;
+
+  -- Verify wallet balance if used
+  IF p_wallet_used > 0 THEN
+    SELECT wallet_balance INTO v_wallet FROM public.profiles WHERE id = v_rider;
+    IF v_wallet < p_wallet_used THEN
+      RAISE EXCEPTION 'Insufficient wallet balance.';
+    END IF;
+    
+    -- Bypass trigger to deduct wallet
+    PERFORM set_config('my.bypass_trigger', 'true', true);
+    UPDATE public.profiles SET wallet_balance = wallet_balance - p_wallet_used WHERE id = v_rider;
+    PERFORM set_config('my.bypass_trigger', 'false', true);
+  END IF;
+
+  -- Bypass trigger to mark paid
+  PERFORM set_config('my.bypass_trigger', 'true', true);
+  UPDATE public.ride_dispatches 
+  SET payment_status = 'paid', payment_method = p_method 
+  WHERE id = p_ride_id;
+  PERFORM set_config('my.bypass_trigger', 'false', true);
+
+  RETURN json_build_object('status', 'success');
 END;
 $$;
 
--- Onboarding Part 2: Driver Specifics
-CREATE OR REPLACE FUNCTION public.complete_driver_profile(v_model TEXT, v_plate TEXT) 
+-- Secure Premium Subscription
+CREATE OR REPLACE FUNCTION public.subscribe_premium()
 RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
-    INSERT INTO public.drivers (id, status, vehicle_model, car_plate_number) 
-    VALUES (auth.uid(), 'offline', v_model, v_plate) 
-    ON CONFLICT (id) DO UPDATE SET vehicle_model = EXCLUDED.vehicle_model, car_plate_number = EXCLUDED.car_plate_number;
-    UPDATE public.profiles SET onboarded = true WHERE id = auth.uid();
-    RETURN json_build_object('status', 'success');
+  PERFORM set_config('my.bypass_trigger', 'true', true);
+  UPDATE public.profiles 
+  SET is_premium = true, premium_expires_at = now() + interval '30 days'
+  WHERE id = auth.uid();
+  PERFORM set_config('my.bypass_trigger', 'false', true);
+  
+  RETURN json_build_object('status', 'success');
 END;
 $$;
+
+-- Unified Onboarding RPC
+CREATE OR REPLACE FUNCTION public.complete_onboarding(
+  p_full_name TEXT, 
+  p_phone TEXT,
+  p_age INT,
+  p_gender TEXT,
+  p_state TEXT,
+  p_district TEXT,
+  p_area TEXT,
+  p_role TEXT,
+  p_vehicle_model TEXT DEFAULT NULL,
+  p_plate_number TEXT DEFAULT NULL
+) 
+RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+    -- Update Profile
+    UPDATE public.profiles 
+    SET full_name = p_full_name, 
+        phone_number = p_phone, 
+        age = p_age,
+        gender = p_gender,
+        state = p_state,
+        district = p_district,
+        area = p_area,
+        role = p_role, 
+        onboarded = true
+    WHERE id = auth.uid();
+
+    -- If driver, insert into drivers table
+    IF p_role = 'driver' THEN
+      INSERT INTO public.drivers (id, status, vehicle_model, car_plate_number) 
+      VALUES (auth.uid(), 'offline', p_vehicle_model, p_plate_number) 
+      ON CONFLICT (id) DO UPDATE SET 
+        vehicle_model = EXCLUDED.vehicle_model, 
+        car_plate_number = EXCLUDED.car_plate_number;
+    END IF;
+
+    RETURN json_build_object('status', 'success', 'role', p_role);
+END;
+$$;
+
+
 
 -- XP Gain Logic (With correct variable assignment to avoid 42P01 error)
 CREATE OR REPLACE FUNCTION public.handle_xp_gain(target_user_id UUID, xp_to_add INT4)

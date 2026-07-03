@@ -9,8 +9,9 @@ export interface UserProfile {
   email?: string;
   age?: number | null;
   gender?: string | null;
-  hometown?: string | null;
-  bio?: string | null;
+  state?: string | null;
+  district?: string | null;
+  area?: string | null;
   avatar_url?: string | null;
   created_at?: string;
   exp?: number;
@@ -18,6 +19,7 @@ export interface UserProfile {
   wallet_balance?: number;
   is_premium?: boolean;
   premium_expires_at?: string | null;
+  emergency_contact_phone?: string | null;
 }
 
 interface UserState {
