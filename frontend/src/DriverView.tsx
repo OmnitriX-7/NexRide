@@ -113,7 +113,7 @@ const DriverView = () => {
 
   // --- ONLINE HEARTBEAT ---
   useEffect(() => {
-    let intervalId: NodeJS.Timeout;
+    let intervalId: any;
 
     if (driverId && (isOnline || activeRide)) {
       const ping = async () => {
@@ -521,7 +521,7 @@ const DriverView = () => {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={weeklyEarnings}>
                       <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
-                      <Tooltip cursor={{ fill: 'var(--border-subtle)' }} contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: '8px', color: 'var(--text-primary)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} itemStyle={{ color: '#1f2937' }} formatter={(val: number) => [`₹${val}`, 'Earnings']} />
+                      <Tooltip cursor={{ fill: 'var(--border-subtle)' }} contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: '8px', color: 'var(--text-primary)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} itemStyle={{ color: '#1f2937' }} formatter={(val: any) => [`₹${val}`, 'Earnings']} />
                       <Bar dataKey="earnings" fill="#10b981" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -534,7 +534,7 @@ const DriverView = () => {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={weeklyHours}>
                       <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
-                      <Tooltip cursor={{ fill: 'var(--border-subtle)' }} contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: '8px', color: 'var(--text-primary)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} itemStyle={{ color: '#1f2937' }} formatter={(val: number) => [`${val}h`, 'Hours Online']} />
+                      <Tooltip cursor={{ fill: 'var(--border-subtle)' }} contentStyle={{ backgroundColor: 'var(--surface)', border: 'none', borderRadius: '8px', color: 'var(--text-primary)', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} itemStyle={{ color: '#1f2937' }} formatter={(val: any) => [`${val}h`, 'Hours Online']} />
                       <Bar dataKey="hours" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
