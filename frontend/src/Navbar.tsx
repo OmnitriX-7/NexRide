@@ -4,13 +4,14 @@ import {
   User, Trophy, CreditCard, 
   Crown, Users, Star, 
   ShieldAlert, LogOut, ChevronRight,
-  Moon, Sun, Car
+  Moon, Sun, Car, Bot
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from './supabaseClient'; 
 import { useUserStore } from './store'; // Added store import
 import { ShareModal } from './ShareModal';
 import { RateAppModal } from './RateAppModal';
+import HelpBot from './HelpBot';
 
 interface MenuButtonProps {
   icon: React.ReactNode;
@@ -28,6 +29,7 @@ const Navbar = () => {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showRateModal, setShowRateModal] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showHelpBot, setShowHelpBot] = useState(false);
   const navigate = useNavigate();
 
   const handleReferral = () => {
@@ -173,6 +175,7 @@ const Navbar = () => {
 
                   <MenuButton icon={<Star size={18}/>} label="Rate App" onClick={handleRateApp} />
                   <MenuButton icon={<ShieldAlert size={18} color="#ef4444"/>} label="SOS / Safety" />
+                  <MenuButton icon={<Bot size={18} color="#3b82f6"/>} label="NexBot Support (AI)" onClick={() => { setShowHelpBot(true); setIsOpen(false); }} />
                   
                   <div style={{ borderTop: '1px solid var(--border-subtle)', marginTop: '8px', paddingTop: '8px' }}>
                     <MenuButton 
@@ -245,6 +248,10 @@ const Navbar = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {showHelpBot && (
+        <HelpBot onClose={() => setShowHelpBot(false)} />
+      )}
     </header>
   );
 };
