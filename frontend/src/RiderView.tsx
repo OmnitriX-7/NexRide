@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Circle, MapPin, Search, Star, CarFront, ArrowUpDown, X, CheckCircle2, IndianRupee, Gauge, LocateFixed } from 'lucide-react';
 import { supabase } from './supabaseClient';
