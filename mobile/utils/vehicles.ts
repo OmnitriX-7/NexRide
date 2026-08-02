@@ -1,0 +1,22 @@
+export const VEHICLE_MODELS = [
+  { id: 'sedan', name: 'Sedan (e.g. Camry, Accord)', image: require('../assets/cars/sedan.jpg') },
+  { id: 'suv', name: 'SUV (e.g. CR-V, RAV4)', image: require('../assets/cars/suv.jpg') },
+  { id: 'hatchback', name: 'Hatchback (e.g. Civic, Golf)', image: require('../assets/cars/hatchback.jpg') },
+  { id: 'luxury', name: 'Luxury (e.g. Mercedes, BMW)', image: require('../assets/cars/luxury.jpg') },
+  { id: 'minivan', name: 'Minivan (e.g. Odyssey, Sienna)', image: require('../assets/cars/minivan.jpg') },
+  { id: 'pickup', name: 'Pickup Truck (e.g. F-150, Silverado)', image: require('../assets/cars/pickup.jpg') },
+  { id: 'sports', name: 'Sports Car (e.g. Porsche 911)', image: require('../assets/cars/sports.jpg') },
+  { id: 'electric', name: 'Electric (e.g. Tesla Model S)', image: require('../assets/cars/electric.jpg') },
+  { id: 'crossover', name: 'Crossover (e.g. Subaru Outback)', image: require('../assets/cars/crossover.jpg') },
+  { id: 'convertible', name: 'Convertible (e.g. Mazda MX-5)', image: require('../assets/cars/convertible.jpg') },
+  { id: 'compact', name: 'Compact (e.g. Toyota Corolla)', image: require('../assets/cars/compact.jpg') },
+  { id: 'subcompact', name: 'Subcompact (e.g. Honda Fit)', image: require('../assets/cars/subcompact.jpg') },
+  { id: 'wagon', name: 'Station Wagon (e.g. Volvo V60)', image: require('../assets/cars/wagon.jpg') },
+  { id: 'offroad', name: 'Off-Road 4x4 (e.g. Jeep Wrangler)', image: require('../assets/cars/suv.jpg') },
+  { id: 'luxury_suv', name: 'Luxury SUV (e.g. Range Rover)', image: require('../assets/cars/suv.jpg') },
+  { id: 'super_luxury', name: 'Super Luxury (e.g. Rolls-Royce)', image: require('../assets/cars/luxury.jpg') },
+  { id: 'hypercar', name: 'Hypercar (e.g. Bugatti Chiron)', image: require('../assets/cars/sports.jpg') },
+  { id: 'muscle', name: 'Muscle Car (e.g. Ford Mustang)', image: require('../assets/cars/sports.jpg') },
+  { id: 'classic', name: 'Classic Car (e.g. 1969 Camaro)', image: require('../assets/cars/convertible.jpg') },
+  { id: 'micro', name: 'Microcar (e.g. Smart Fortwo)', image: require('../assets/cars/subcompact.jpg') }
+];

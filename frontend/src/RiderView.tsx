@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Circle, MapPin, Search, Star, CarFront, ArrowUpDown, X, CheckCircle2, IndianRupee, Gauge } from 'lucide-react';
+import { Circle, MapPin, Search, Star, CarFront, ArrowUpDown, X, CheckCircle2, IndianRupee, Gauge, LocateFixed } from 'lucide-react';
 import { supabase } from './supabaseClient';
+import { VEHICLE_MODELS } from './utils/vehicles';
 import { useUserStore } from './store';
 import RiderMap from './RiderMap';
 import { PaymentGateway } from './PaymentGateway';
@@ -540,9 +541,9 @@ const RiderView = () => {
                     <input id="pickup-input" name="pickup" placeholder="Pick up Location" value={pickup} onFocus={() => setActiveField('pickup')} onChange={(e) => setPickup(e.target.value)} className="location-input" style={{ flex: 1 }} />
                     <button 
                       onClick={handleUseCurrentLocation}
-                      style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '12px', padding: '0 8px', fontWeight: 'bold' }}
+                      style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: '0 8px', display: 'flex', alignItems: 'center' }}
                     >
-                      Use Current
+                      <LocateFixed size={20} />
                     </button>
                   </div>
                   {activeField === 'pickup' && pickupSuggestions.length > 0 && (
@@ -614,13 +615,19 @@ const RiderView = () => {
                   {sortedDrivers.map((driver) => (
                     <div key={driver.id} className={`driver-card ${activeCoupon ? 'has-coupon' : ''}`}>
                       {activeCoupon && <div className="coupon-badge">{activeCoupon.discount_percent}% OFF</div>}
-                      <div className="driver-avatar"><CarFront size={24} /></div>
+                      <div className="driver-avatar" style={{ padding: 0, overflow: 'hidden', backgroundColor: 'transparent' }}>
+                        {VEHICLE_MODELS.find(v => v.id === driver.vehicle) ? (
+                          <img src={VEHICLE_MODELS.find(v => v.id === driver.vehicle)?.image} alt="car" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px' }} />
+                        ) : (
+                          <div style={{ width: '100%', height: '100%', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '12px' }}><CarFront size={24} /></div>
+                        )}
+                      </div>
                       <div className="driver-info">
                         <div className="driver-name-row">
                           <h4>{driver.name}</h4>
                           <div className="driver-rating"><Star size={10} className="star-icon" /> <span>{driver.rating}</span></div>
                         </div>
-                        <p className="driver-vehicle">{driver.vehicle}</p>
+                        <p className="driver-vehicle">{VEHICLE_MODELS.find(v => v.id === driver.vehicle)?.name || driver.vehicle || 'NexRide Cab'}</p>
                         <p className="driver-distance">{driver.distance} km away</p>
                       </div>
                       <div className="driver-actions">

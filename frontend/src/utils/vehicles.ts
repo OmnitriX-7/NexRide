@@ -1,0 +1,22 @@
+export const VEHICLE_MODELS = [
+  { id: 'sedan', name: 'Sedan (e.g. Camry, Accord)', image: '/cars/sedan.jpg' },
+  { id: 'suv', name: 'SUV (e.g. CR-V, RAV4)', image: '/cars/suv.jpg' },
+  { id: 'hatchback', name: 'Hatchback (e.g. Civic, Golf)', image: '/cars/hatchback.jpg' },
+  { id: 'luxury', name: 'Luxury (e.g. Mercedes, BMW)', image: '/cars/luxury.jpg' },
+  { id: 'minivan', name: 'Minivan (e.g. Odyssey, Sienna)', image: '/cars/minivan.jpg' },
+  { id: 'pickup', name: 'Pickup Truck (e.g. F-150, Silverado)', image: '/cars/pickup.jpg' },
+  { id: 'sports', name: 'Sports Car (e.g. Porsche 911)', image: '/cars/sports.jpg' },
+  { id: 'electric', name: 'Electric (e.g. Tesla Model S)', image: '/cars/electric.jpg' },
+  { id: 'crossover', name: 'Crossover (e.g. Subaru Outback)', image: '/cars/crossover.jpg' },
+  { id: 'convertible', name: 'Convertible (e.g. Mazda MX-5)', image: '/cars/convertible.jpg' },
+  { id: 'compact', name: 'Compact (e.g. Toyota Corolla)', image: '/cars/compact.jpg' },
+  { id: 'subcompact', name: 'Subcompact (e.g. Honda Fit)', image: '/cars/subcompact.jpg' },
+  { id: 'wagon', name: 'Station Wagon (e.g. Volvo V60)', image: '/cars/wagon.jpg' },
+  { id: 'offroad', name: 'Off-Road 4x4 (e.g. Jeep Wrangler)', image: '/cars/suv.jpg' },
+  { id: 'luxury_suv', name: 'Luxury SUV (e.g. Range Rover)', image: '/cars/suv.jpg' },
+  { id: 'super_luxury', name: 'Super Luxury (e.g. Rolls-Royce)', image: '/cars/luxury.jpg' },
+  { id: 'hypercar', name: 'Hypercar (e.g. Bugatti Chiron)', image: '/cars/sports.jpg' },
+  { id: 'muscle', name: 'Muscle Car (e.g. Ford Mustang)', image: '/cars/sports.jpg' },
+  { id: 'classic', name: 'Classic Car (e.g. 1969 Camaro)', image: '/cars/convertible.jpg' },
+  { id: 'micro', name: 'Microcar (e.g. Smart Fortwo)', image: '/cars/subcompact.jpg' }
+];

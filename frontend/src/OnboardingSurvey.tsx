@@ -5,19 +5,9 @@ import 'react-phone-number-input/style.css';
 import LoadingScreen from './LoadingScreen'; 
 import { useUserStore } from './store'; 
 import { supabase } from './supabaseClient';
-import { motion } from 'framer-motion';
-
-const VEHICLE_MODELS = [
-  "Toyota Prius",
-  "Honda Civic",
-  "Toyota Camry",
-  "Hyundai Sonata",
-  "Ford Fusion",
-  "Chevrolet Malibu",
-  "Nissan Altima",
-  "Kia Optima",
-  "Tesla Model 3"
-];
+import { motion, AnimatePresence } from 'framer-motion';
+import { VEHICLE_MODELS } from './utils/vehicles';
+import { ChevronDown, Search, X } from 'lucide-react';
 
 export default function OnboardingSurvey() {
   const navigate = useNavigate();
@@ -36,6 +26,10 @@ export default function OnboardingSurvey() {
   // Driver specific
   const [vehicleModel, setVehicleModel] = useState('');
   const [plateNumber, setPlateNumber] = useState('');
+  
+  const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
+  const [vehicleSearch, setVehicleSearch] = useState('');
+  const filteredVehicles = VEHICLE_MODELS.filter(v => v.name.toLowerCase().includes(vehicleSearch.toLowerCase()));
   
   const [statusMessage, setStatusMessage] = useState('');
   const [error, setError] = useState('');
@@ -110,6 +104,11 @@ export default function OnboardingSurvey() {
       });
 
       if (rpcError) throw rpcError;
+
+      if (role === 'driver') {
+        const { error: ratingError } = await supabase.from('drivers').update({ rating: 0, reviews_count: 0 }).eq('id', user.id);
+        if (ratingError) console.error("Failed to reset rating:", ratingError);
+      }
 
       setProfile({
         id: user.id,
@@ -234,14 +233,62 @@ export default function OnboardingSurvey() {
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ overflow: 'hidden' }}>
               <h3 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px', marginTop: '8px' }}>Vehicle Details</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div>
+                <div style={{ position: 'relative' }}>
                   <label style={labelStyle}>Vehicle Model</label>
-                  <select style={inputStyle} value={vehicleModel} onChange={e => setVehicleModel(e.target.value)}>
-                    <option value="">Select a Model</option>
-                    {VEHICLE_MODELS.map(model => (
-                      <option key={model} value={model}>{model}</option>
-                    ))}
-                  </select>
+                  <div 
+                    onClick={() => setShowVehicleDropdown(!showVehicleDropdown)}
+                    style={{ ...inputStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', backgroundColor: 'white' }}
+                  >
+                    {vehicleModel ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <img src={VEHICLE_MODELS.find(v => v.id === vehicleModel)?.image} alt="car" style={{ width: '40px', height: '30px', objectFit: 'cover', borderRadius: '4px' }} />
+                        <span style={{ fontWeight: '500' }}>{VEHICLE_MODELS.find(v => v.id === vehicleModel)?.name}</span>
+                      </div>
+                    ) : (
+                      <span style={{ color: '#94a3b8' }}>Select a Model</span>
+                    )}
+                    <ChevronDown size={20} color="#64748b" />
+                  </div>
+                  
+                  <AnimatePresence>
+                    {showVehicleDropdown && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: -10 }} 
+                        animate={{ opacity: 1, y: 0 }} 
+                        exit={{ opacity: 0, y: -10 }}
+                        style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '8px', backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)', zIndex: 50, border: '1px solid #e2e8f0', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '300px' }}
+                      >
+                        <div style={{ padding: '12px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#f8fafc' }}>
+                          <Search size={18} color="#64748b" />
+                          <input 
+                            autoFocus
+                            placeholder="Search models..." 
+                            value={vehicleSearch} 
+                            onChange={e => setVehicleSearch(e.target.value)} 
+                            style={{ flex: 1, border: 'none', outline: 'none', backgroundColor: 'transparent', fontSize: '15px' }} 
+                          />
+                          <X size={18} color="#94a3b8" style={{ cursor: 'pointer' }} onClick={() => setShowVehicleDropdown(false)} />
+                        </div>
+                        <div style={{ overflowY: 'auto' }}>
+                          {filteredVehicles.map(model => (
+                            <div 
+                              key={model.id} 
+                              onClick={() => { setVehicleModel(model.id); setShowVehicleDropdown(false); }}
+                              style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '16px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', backgroundColor: vehicleModel === model.id ? '#eff6ff' : 'white' }}
+                              onMouseEnter={(e) => { if (vehicleModel !== model.id) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+                              onMouseLeave={(e) => { if (vehicleModel !== model.id) e.currentTarget.style.backgroundColor = 'white'; }}
+                            >
+                              <img src={model.image} alt={model.name} style={{ width: '60px', height: '40px', objectFit: 'cover', borderRadius: '6px' }} />
+                              <span style={{ fontSize: '15px', color: vehicleModel === model.id ? '#1d4ed8' : '#334155', fontWeight: vehicleModel === model.id ? '600' : '500' }}>{model.name}</span>
+                            </div>
+                          ))}
+                          {filteredVehicles.length === 0 && (
+                            <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>No models found</div>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
                 <div>
                   <label style={labelStyle}>License Plate Number</label>

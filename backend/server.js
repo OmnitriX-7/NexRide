@@ -34,7 +34,7 @@ app.post('/create-payment-intent', async (req, res) => {
     let finalAmount = 0;
 
     if (type === 'subscription') {
-      finalAmount = 29.99; // Hardcoded premium subscription amount
+      finalAmount = 499; // Premium subscription amount in INR
     } else {
       if (!ride_id) {
         return res.status(400).send({ error: { message: "Missing ride_id" } });
